@@ -1,0 +1,136 @@
+name: build
+
+# ローカルビルドはせず、すべて GitHub Actions 上でビルドする。
+# - push / PR: exe を成果物(Artifact)として添付する
+# - タグ v* を push: 上記に加えて Release を作成し zip を添付する
+# - 手動実行(workflow_dispatch)も可
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: VRCDollyPivotManager
+
+jobs:
+  build:
+    # タスクトレイ常駐の Windows アプリなので Windows ランナーでしかビルドできない
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 既存のタグから次のバージョンを決めるので全履歴が要る
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Syntax check
+        run: python -m compileall -q ${{ env.APP_NAME }}.py oscquery.py
+
+      - name: Build exe
+        # --noconsole: コンソールを持たないアプリにする（タスクトレイ常駐のため）
+        # --hidden-import: pystray は実行時にバックエンドを選ぶので静的解析で拾えない
+        # --collect-all zeroconf: zeroconf は実行時に動的インポートするため
+        # 静的解析だけでは取りこぼす
+        run: >
+          pyinstaller
+          --noconsole
+          --onefile
+          --clean
+          --noconfirm
+          --name ${{ env.APP_NAME }}
+          --hidden-import pystray._win32
+          --collect-all zeroconf
+          ${{ env.APP_NAME }}.py
+
+      - name: Stage release files
+        run: |
+          New-Item -ItemType Directory -Force package | Out-Null
+          Copy-Item dist/${{ env.APP_NAME }}.exe package/
+          Copy-Item config.json package/
+          Copy-Item README.md package/
+        shell: pwsh
+
+      - name: Verify exe exists
+        run: |
+          if (-not (Test-Path "package/${{ env.APP_NAME }}.exe")) {
+            Write-Error "exe が生成されていません"
+            exit 1
+          }
+          Get-Item "package/${{ env.APP_NAME }}.exe" | Select-Object Name,Length
+        shell: pwsh
+
+      - name: Resolve version
+        id: version
+        # タグからのビルドはそのタグ名。それ以外は既存タグのパッチを +1 する。
+        # タグが1つも無ければ v0.0.1 から始める。
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $value = "${{ github.ref_name }}"
+          } else {
+            $latest = git tag --list "v*.*.*" |
+              ForEach-Object { $_ -replace '^v', '' } |
+              Where-Object { $_ -match '^\d+\.\d+\.\d+$' } |
+              ForEach-Object { [version]$_ } |
+              Sort-Object |
+              Select-Object -Last 1
+
+            if ($null -eq $latest) {
+              $value = "v0.0.1"
+            } else {
+              $value = "v{0}.{1}.{2}" -f $latest.Major, $latest.Minor, ($latest.Build + 1)
+            }
+          }
+          "value=$value" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "version = $value"
+        shell: pwsh
+
+      - name: Create zip
+        # exe と config.json（と README）をまとめた zip を常に作る
+        run: |
+          $zip = "${{ env.APP_NAME }}_${{ steps.version.outputs.value }}.zip"
+          Compress-Archive -Path package/* -DestinationPath $zip -Force
+          Get-Item $zip | Select-Object Name, Length
+          "ZIP_NAME=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        shell: pwsh
+
+      - name: Upload zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}_${{ steps.version.outputs.value }}
+          path: ${{ env.ZIP_NAME }}
+          if-no-files-found: error
+
+      - name: Create release
+        # ビルドのたびにリリースを作る。タグはこのステップが自動で打つ。
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.value }}
+          name: ${{ steps.version.outputs.value }}
+          target_commitish: ${{ github.sha }}
+          body: |
+            commit ${{ github.sha }}
+
+            zip には exe / config.json / README.md が入っています。
+            exe と config.json は同じフォルダに置いてください。
+          make_latest: true
+          files: ${{ env.ZIP_NAME }}

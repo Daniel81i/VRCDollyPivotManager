@@ -1,0 +1,17 @@
+# PyInstaller
+build/
+dist/
+package/
+*.spec
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 実行時に生成されるもの
+log/
+output/
+data/
+state.json
