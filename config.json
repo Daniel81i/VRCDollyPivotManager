@@ -1,0 +1,14 @@
+{
+  "connection": "oscquery",
+  "fallback": true,
+  "receive_port": 9001,
+  "send_port": 9000,
+  "output_dir": "%USERPROFILE%\\Documents\\VRChat\\CameraPaths",
+  "auto_import": true,
+  "auto_play_delay": -1,
+  "write_at_press": false,
+  "rho": 0.2,
+  "reference_eye_height": 1.643425,
+  "jitter_vertical_ratio": 0.2,
+  "debug": false
+}
