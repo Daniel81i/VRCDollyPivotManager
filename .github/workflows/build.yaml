@@ -61,34 +61,28 @@ jobs:
           --collect-all zeroconf
           ${{ env.APP_NAME }}.py
 
+      - name: Build unitypackage
+        # .unitypackage は gzip した tar で、構造さえ守れば Unity 無しで組める。
+        # .meta の欠落や GUID の読めない meta があればここで落ちる。
+        run: python tools/build_unitypackage.py package/${{ env.APP_NAME }}.unitypackage
+
       - name: Stage release files
-        # unity/Assets はアバター側のエディタ拡張。Unity が無いランナーでは
-        # .unitypackage を作れないので、フォルダのまま同梱して手でコピーしてもらう。
         run: |
-          New-Item -ItemType Directory -Force package | Out-Null
           Copy-Item dist/${{ env.APP_NAME }}.exe package/
           Copy-Item config.json package/
           Copy-Item README.md package/
-          Copy-Item unity/Assets package/Assets -Recurse
         shell: pwsh
 
       - name: Verify package contents
         run: |
-          if (-not (Test-Path "package/${{ env.APP_NAME }}.exe")) {
-            Write-Error "exe が生成されていません"
-            exit 1
-          }
-          # .meta が欠けると Unity 側で GUID が振り直され、参照が壊れる
-          $assets = Get-ChildItem package/Assets -Recurse -File
-          $sources = $assets | Where-Object { $_.Extension -in '.cs', '.png' }
-          foreach ($f in $sources) {
-            if (-not (Test-Path "$($f.FullName).meta")) {
-              Write-Error "$($f.Name) の .meta がありません"
+          foreach ($f in "${{ env.APP_NAME }}.exe", "${{ env.APP_NAME }}.unitypackage",
+                         "config.json", "README.md") {
+            if (-not (Test-Path "package/$f")) {
+              Write-Error "$f が package にありません"
               exit 1
             }
           }
-          Write-Host "Unity アセット $($sources.Count) 件（.meta 同梱）"
-          Get-Item "package/${{ env.APP_NAME }}.exe" | Select-Object Name,Length
+          Get-ChildItem package | Select-Object Name,Length
         shell: pwsh
 
       - name: Resolve version

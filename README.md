@@ -23,8 +23,17 @@ zip の中身です。
 |---|---|
 | `VRCDollyPivotManager.exe` | PC 側のツール本体 |
 | `config.json` | 設定。**exe と同じフォルダに置いてください** |
-| `Assets/` | **アバター側のエディタ拡張。**Unity プロジェクトへコピーします |
+| `VRCDollyPivotManager.unitypackage` | **アバター側のエディタ拡張** |
 | `README.md` | このファイル |
+
+Actions の Artifacts は GitHub 側でさらに zip に包まれるため、ダウンロードすると zip の中に zip が入った状態になります。Releases から取れば zip がそのままです。
+
+任意のバージョンを指定したい場合は、自分でタグを打てばその名前が使われます。
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
 
 ## アバター側の導入
 
@@ -42,30 +51,24 @@ zip の中身です。
 
 ### 手順
 
-1. zip の `Assets` フォルダを、Unity プロジェクトの `Assets` へコピーする
+1. `VRCDollyPivotManager.unitypackage` をダブルクリック（または Unity で `Assets > Import Package > Custom Package`）してインポートする
 2. Hierarchy でアバター（`VRCAvatarDescriptor` を持つオブジェクト）を選ぶ
 3. `Tools > CamDrone > Setup Player Probe (Plan A)` を実行
 4. `Tools > CamDrone > Setup Orbit Guide` を実行
 5. アバターをアップロード
 
-**アニメーション・アニメーター・メニュー・マテリアルはセットアップ実行時に自動生成されます。** zip に入っているのはスクリプトとテクスチャだけです。
+**アニメーション・アニメーター・メニュー・マテリアルはセットアップ実行時に自動生成されます。** unitypackage に入っているのはエディタ拡張のスクリプト2つとテクスチャ1つだけです。
 
 取り外すときは `Tools > CamDrone > Remove Orbit Guide` と `Remove Player Probe` を実行してください。
 
 ### 更新するとき
 
-新しいバージョンの `Assets` を上書きコピーし、**セットアップを再実行**してください。生成物は毎回作り直されます。
+新しいバージョンの unitypackage をインポートして上書きし、**セットアップを再実行**してください。生成物は毎回作り直されます。
+
+GUID は据え置きなので、上書きしても既存の参照は切れません。
 
 **exe とアバターは同じバージョンで揃えてください。** 片方だけ新しいと、後述の「アバターと一致必須の値」がずれて生成結果が狂います。
 
-Actions の Artifacts は GitHub 側でさらに zip に包まれるため、ダウンロードすると zip の中に zip が入った状態になります。Releases から取れば zip がそのままです。
-
-任意のバージョンを指定したい場合は、自分でタグを打てばその名前が使われます。
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
 
 ## config.json
 
