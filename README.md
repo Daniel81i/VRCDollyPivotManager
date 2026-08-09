@@ -17,7 +17,46 @@
 | **通常** | **Releases の最新** | `VRCDollyPivotManager_v0.0.N.zip` |
 | 過去のビルド | Releases の一覧、または Actions タブの Artifacts | 同上 |
 
-zip の中身は `VRCDollyPivotManager.exe` / `config.json` / `README.md` です。展開して**exe と config.json を同じフォルダに置いてください。**
+zip の中身です。
+
+| | 用途 |
+|---|---|
+| `VRCDollyPivotManager.exe` | PC 側のツール本体 |
+| `config.json` | 設定。**exe と同じフォルダに置いてください** |
+| `Assets/` | **アバター側のエディタ拡張。**Unity プロジェクトへコピーします |
+| `README.md` | このファイル |
+
+## アバター側の導入
+
+**PC 側の exe だけでは動きません。** アバターに測距用のレイとメニューを仕込む必要があります。
+
+### 必要なもの
+
+| | 用途 |
+|---|---|
+| **VRChat SDK3 - Avatars** | 必須 |
+| **Modular Avatar** | 必須。パラメータとメニューの合成に使います |
+| **FloorPointer** | **必須。**別途導入してください |
+
+**FloorPointer は同梱していません。** このツールは FloorPointer が作る固定点（`Object_1`〜`Object_5`）にガイドと測距レイを取り付けるアドオンです。アバター直下に `FloorPointer` が無い状態でセットアップを実行すると、警告を出して中止します。
+
+### 手順
+
+1. zip の `Assets` フォルダを、Unity プロジェクトの `Assets` へコピーする
+2. Hierarchy でアバター（`VRCAvatarDescriptor` を持つオブジェクト）を選ぶ
+3. `Tools > CamDrone > Setup Player Probe (Plan A)` を実行
+4. `Tools > CamDrone > Setup Orbit Guide` を実行
+5. アバターをアップロード
+
+**アニメーション・アニメーター・メニュー・マテリアルはセットアップ実行時に自動生成されます。** zip に入っているのはスクリプトとテクスチャだけです。
+
+取り外すときは `Tools > CamDrone > Remove Orbit Guide` と `Remove Player Probe` を実行してください。
+
+### 更新するとき
+
+新しいバージョンの `Assets` を上書きコピーし、**セットアップを再実行**してください。生成物は毎回作り直されます。
+
+**exe とアバターは同じバージョンで揃えてください。** 片方だけ新しいと、後述の「アバターと一致必須の値」がずれて生成結果が狂います。
 
 Actions の Artifacts は GitHub 側でさらに zip に包まれるため、ダウンロードすると zip の中に zip が入った状態になります。Releases から取れば zip がそのままです。
 
