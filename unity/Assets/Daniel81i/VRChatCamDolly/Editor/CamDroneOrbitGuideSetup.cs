@@ -103,7 +103,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         //   BandHeight    帯の縦幅(m)。細くても見えればよいので控えめにしてある
         //   BandArrowSpan 矢印1つぶんの長さ(m)。半径によらず一定に保つ
         //   BandSegments  円周の分割数。増やすと滑らかになるが頂点も増える
-        private const float BandHeight = 0.12f;
+        private const float BandHeight = 0.08f;
         private const float BandArrowSpan = 0.6f;
         private const int BandSegments = 128;
 
@@ -129,9 +129,9 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
 
         // 目印は3種類あるので、粒の大きさで見分けられるようにする。
         // 最下点が一番目立つべきなので最大にしている。
-        private const float CenterMarkerSize = 0.14f;
-        private const float LowPointSize = 0.22f;
-        private const float FloorMarkerSize = 0.30f;
+        private const float CenterMarkerSize = 0.21f;
+        private const float LowPointSize = 0.33f;
+        private const float FloorMarkerSize = 0.45f;
 
         /// <summary>
         /// 1周あたりのポイント数の選択肢。Int パラメータにそのまま点数が入るので、
