@@ -71,12 +71,13 @@ jobs:
           Copy-Item dist/${{ env.APP_NAME }}.exe package/
           Copy-Item config.json package/
           Copy-Item README.md package/
+          Copy-Item LICENSE package/
         shell: pwsh
 
       - name: Verify package contents
         run: |
           foreach ($f in "${{ env.APP_NAME }}.exe", "${{ env.APP_NAME }}.unitypackage",
-                         "config.json", "README.md") {
+                         "config.json", "README.md", "LICENSE") {
             if (-not (Test-Path "package/$f")) {
               Write-Error "$f が package にありません"
               exit 1
