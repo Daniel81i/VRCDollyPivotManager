@@ -79,7 +79,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         /// PC側の計算と必ず同じ値にすること。
         /// </summary>
         /// <remarks>
-        /// camdrone_dolly_tray.py の PROBE_BASELINE と一致必須。
+        /// VRCDollyPivotManager.py の PROBE_BASELINE と一致必須。
         /// 三辺測量の分母なので、食い違うと距離が丸ごと圧縮/拡大される。
         /// ここを変えたときは PC 側も同じ値に直して両方をビルドし直すこと。
         /// </remarks>
@@ -121,13 +121,13 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             var floorPointer = avatar.transform.Find(FloorPointerName);
             if (floorPointer == null)
             {
-                var message =
+                var warning =
                     $"アバター直下に '{FloorPointerName}' が見つかりません。\n\n" +
                     "このツールは FloorPointer の固定点（Object_1〜Object_5）へ" +
                     "測距用のレイを取り付けるアドオンです。\n" +
                     "先に FloorPointer を導入し、アバター直下に配置してください。";
-                Debug.LogWarning($"[CamDrone Probe] {message.Replace("\n", " ")}", avatar);
-                EditorUtility.DisplayDialog("CamDrone Probe", message, "OK");
+                Debug.LogWarning($"[CamDrone Probe] {warning.Replace("\n", " ")}", avatar);
+                EditorUtility.DisplayDialog("CamDrone Probe", warning, "OK");
                 return;
             }
 
@@ -137,12 +137,12 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 var slot = floorPointer.Find("Object_" + i);
                 if (slot == null)
                 {
-                    var message =
+                    var warning =
                         $"'{FloorPointerName}/Object_{i}' が見つかりません。\n\n" +
                         $"FloorPointer に Object_1〜Object_{SlotCount} が揃っている必要があります。" +
                         "構成を確認してください。";
-                    Debug.LogWarning($"[CamDrone Probe] {message.Replace("\n", " ")}", floorPointer);
-                    EditorUtility.DisplayDialog("CamDrone Probe", message, "OK");
+                    Debug.LogWarning($"[CamDrone Probe] {warning.Replace("\n", " ")}", floorPointer);
+                    EditorUtility.DisplayDialog("CamDrone Probe", warning, "OK");
                     return;
                 }
 
