@@ -29,7 +29,10 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
     /// 収める必要があるため、1 スロットあたり 3 システムに抑えている。
     /// 柱はメッシュ、印は 1 粒ずつ、水平の参照円と床の印は持たない。
     ///
-    /// メニューは2階層。1階層目で Object1〜5 を選び、2階層目に高さ・半径・表示切替。
+    /// メニューは根で Pivot と Camera に分かれる。
+    ///   Pivot  → Pivot 1〜5 → 高さ・半径・傾き・表示切替・Confirm
+    ///   Camera → Lens（Zoom / FocalDistance / Aperture）と Motion（Duration / Speed）
+    /// カメラ設定はスロットに属さない。同時に1本しかパスを作らないため。
     ///
     /// 生成物はすべてシーン上のアバターインスタンス配下のオーバーライドとして作られる。
     /// アバターや FloorPointer の prefab アセット本体には書き込まない。
@@ -169,6 +172,14 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         private const float SpeedMax = 15f;             // SPEED_MAX
         private const float SpeedDefault = 3f;          // DEFAULT_CAMERA["Speed"]
 
+        private const float FocalDistanceMin = 0f;      // FOCAL_DISTANCE_MIN
+        private const float FocalDistanceMax = 10f;     // FOCAL_DISTANCE_MAX
+        private const float FocalDistanceDefault = 1.5f;  // DEFAULT_CAMERA["FocalDistance"]
+
+        private const float ApertureMin = 1.4f;         // APERTURE_MIN
+        private const float ApertureMax = 32f;          // APERTURE_MAX
+        private const float ApertureDefault = 15f;      // DEFAULT_CAMERA["Aperture"]
+
         [MenuItem(MenuPath, true)]
         private static bool ValidateRun() => FindAvatar() != null;
 
@@ -255,7 +266,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             ConfigureMergeAnimator(menuRoot.gameObject, BuildCameraController());
             ConfigureCameraParameters(menuRoot.gameObject);
 
-            var rootMenu = BuildRootMenu(subMenus, BuildCameraMenu());
+            var rootMenu = BuildRootMenu(subMenus);
             ConfigureMenuInstaller(menuRoot.gameObject, rootMenu);
 
             Undo.CollapseUndoOperations(undoGroup);
@@ -924,9 +935,13 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
 
         // カメラ設定はスロットに属さないので Obj{N} を挟まない
         private const string ZoomParam = "CamDrone/Camera/Zoom";
+        private const string FocalDistanceParam = "CamDrone/Camera/FocalDistance";
+        private const string ApertureParam = "CamDrone/Camera/Aperture";
         private const string DurationParam = "CamDrone/Camera/Duration";
         private const string SpeedParam = "CamDrone/Camera/Speed";
         private const string ResetZoomParam = "CamDrone/Camera/ResetZoom";
+        private const string ResetFocalDistanceParam = "CamDrone/Camera/ResetFocalDistance";
+        private const string ResetApertureParam = "CamDrone/Camera/ResetAperture";
         private const string ResetDurationParam = "CamDrone/Camera/ResetDuration";
         private const string ResetSpeedParam = "CamDrone/Camera/ResetSpeed";
 
@@ -946,9 +961,15 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             controller.parameters = new[]
             {
                 FloatParameter(ZoomParam, Normalize(ZoomDefault, ZoomMin, ZoomMax)),
+                FloatParameter(FocalDistanceParam,
+                    Normalize(FocalDistanceDefault, FocalDistanceMin, FocalDistanceMax)),
+                FloatParameter(ApertureParam,
+                    Normalize(ApertureDefault, ApertureMin, ApertureMax)),
                 FloatParameter(DurationParam, Normalize(DurationDefault, DurationMin, DurationMax)),
                 FloatParameter(SpeedParam, Normalize(SpeedDefault, SpeedMin, SpeedMax)),
                 BoolParameter(ResetZoomParam, false),
+                BoolParameter(ResetFocalDistanceParam, false),
+                BoolParameter(ResetApertureParam, false),
                 BoolParameter(ResetDurationParam, false),
                 BoolParameter(ResetSpeedParam, false),
             };
@@ -966,6 +987,11 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
 
             AddResetState(machine, idle, "SetZoom", ResetZoomParam,
                 ZoomParam, Normalize(ZoomDefault, ZoomMin, ZoomMax));
+            AddResetState(machine, idle, "SetFocalDistance", ResetFocalDistanceParam,
+                FocalDistanceParam,
+                Normalize(FocalDistanceDefault, FocalDistanceMin, FocalDistanceMax));
+            AddResetState(machine, idle, "SetAperture", ResetApertureParam,
+                ApertureParam, Normalize(ApertureDefault, ApertureMin, ApertureMax));
             AddResetState(machine, idle, "SetDuration", ResetDurationParam,
                 DurationParam, Normalize(DurationDefault, DurationMin, DurationMax));
             AddResetState(machine, idle, "SetSpeed", ResetSpeedParam,
@@ -1292,17 +1318,27 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             return menu;
         }
 
-        private static VRCExpressionsMenu BuildRootMenu(VRCExpressionsMenu[] subMenus,
-            VRCExpressionsMenu cameraMenu)
+        private static VRCExpressionsMenu BuildRootMenu(VRCExpressionsMenu[] subMenus)
         {
             var menu = NewMenu("CamDroneOrbit_Root");
+            menu.controls = new List<VRCExpressionsMenu.Control>
+            {
+                SubMenuControl("Pivot", BuildPivotMenu(subMenus)),
+                SubMenuControl("Camera", BuildCameraMenu()),
+            };
+            EditorUtility.SetDirty(menu);
+            return menu;
+        }
+
+        /// <summary>旋回の中心にする固定点を選ぶ。中身は FloorPointer の Object_N。</summary>
+        private static VRCExpressionsMenu BuildPivotMenu(VRCExpressionsMenu[] subMenus)
+        {
+            var menu = NewMenu("CamDroneOrbit_Pivot");
             var controls = new List<VRCExpressionsMenu.Control>();
             for (var i = 0; i < subMenus.Length; i++)
             {
-                controls.Add(SubMenuControl("Object " + (i + 1), subMenus[i]));
+                controls.Add(SubMenuControl("Pivot " + (i + 1), subMenus[i]));
             }
-
-            controls.Add(SubMenuControl("Camera", cameraMenu));
 
             menu.controls = controls;
             EditorUtility.SetDirty(menu);
@@ -1312,16 +1348,49 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         /// <summary>
         /// 生成する JSON へ書くカメラ設定。スロットに属さないので根に置く。
         ///
-        /// パペットは % での大まかな操作しかできず既定値ちょうどには戻せないため、
-        /// 項目ごとに初期化ボタンを添えてある。
+        /// 1階層に置けるのは 8 個まで。項目ごとに初期化ボタンを付けると 10 個に
+        /// なってしまうので、意味で Lens と Motion に分けている。
         /// </summary>
         private static VRCExpressionsMenu BuildCameraMenu()
         {
             var menu = NewMenu("CamDroneOrbit_Camera");
             menu.controls = new List<VRCExpressionsMenu.Control>
             {
+                SubMenuControl("Lens", BuildLensMenu()),
+                SubMenuControl("Motion", BuildMotionMenu()),
+            };
+            EditorUtility.SetDirty(menu);
+            return menu;
+        }
+
+        /// <summary>
+        /// 画づくりの設定。
+        ///
+        /// パペットは % での大まかな操作しかできず既定値ちょうどには戻せないため、
+        /// 項目ごとに初期化ボタンを添えてある。
+        /// </summary>
+        private static VRCExpressionsMenu BuildLensMenu()
+        {
+            var menu = NewMenu("CamDroneOrbit_Lens");
+            menu.controls = new List<VRCExpressionsMenu.Control>
+            {
                 RadialControl("Zoom", ZoomParam),
                 ButtonControl("Zoom 初期化", ResetZoomParam),
+                RadialControl("FocalDistance", FocalDistanceParam),
+                ButtonControl("FocalDistance 初期化", ResetFocalDistanceParam),
+                RadialControl("Aperture", ApertureParam),
+                ButtonControl("Aperture 初期化", ResetApertureParam),
+            };
+            EditorUtility.SetDirty(menu);
+            return menu;
+        }
+
+        /// <summary>再生の速さに関する設定。</summary>
+        private static VRCExpressionsMenu BuildMotionMenu()
+        {
+            var menu = NewMenu("CamDroneOrbit_Motion");
+            menu.controls = new List<VRCExpressionsMenu.Control>
+            {
                 RadialControl("Duration", DurationParam),
                 ButtonControl("Duration 初期化", ResetDurationParam),
                 RadialControl("Speed", SpeedParam),
@@ -1440,10 +1509,16 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             parameters.parameters = new List<ParameterConfig>
             {
                 Param(ZoomParam, ParameterSyncType.Float, Normalize(ZoomDefault, ZoomMin, ZoomMax)),
+                Param(FocalDistanceParam, ParameterSyncType.Float,
+                    Normalize(FocalDistanceDefault, FocalDistanceMin, FocalDistanceMax)),
+                Param(ApertureParam, ParameterSyncType.Float,
+                    Normalize(ApertureDefault, ApertureMin, ApertureMax)),
                 Param(DurationParam, ParameterSyncType.Float,
                     Normalize(DurationDefault, DurationMin, DurationMax)),
                 Param(SpeedParam, ParameterSyncType.Float, Normalize(SpeedDefault, SpeedMin, SpeedMax)),
                 Param(ResetZoomParam, ParameterSyncType.Bool, 0f),
+                Param(ResetFocalDistanceParam, ParameterSyncType.Bool, 0f),
+                Param(ResetApertureParam, ParameterSyncType.Bool, 0f),
                 Param(ResetDurationParam, ParameterSyncType.Bool, 0f),
                 Param(ResetSpeedParam, ParameterSyncType.Bool, 0f),
             };

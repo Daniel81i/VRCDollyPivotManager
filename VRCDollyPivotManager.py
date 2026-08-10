@@ -114,6 +114,15 @@ DURATION_MIN = 0.1      # CamDroneOrbitGuideSetup.DurationMin
 DURATION_MAX = 60.0     # CamDroneOrbitGuideSetup.DurationMax
 SPEED_MIN = 0.1         # CamDroneOrbitGuideSetup.SpeedMin
 SPEED_MAX = 15.0        # CamDroneOrbitGuideSetup.SpeedMax
+FOCAL_DISTANCE_MIN = 0.0    # CamDroneOrbitGuideSetup.FocalDistanceMin
+FOCAL_DISTANCE_MAX = 10.0   # CamDroneOrbitGuideSetup.FocalDistanceMax
+APERTURE_MIN = 1.4      # CamDroneOrbitGuideSetup.ApertureMin
+APERTURE_MAX = 32.0     # CamDroneOrbitGuideSetup.ApertureMax
+
+# スロットごとの書き出し先パス。固定で、メニューからは変えられない。
+# VRChat の Multi ストリーミングは 4 本までしか扱えないため 0〜3 に収める。
+# 5 番目は 1 番目と同じ 0 を使う。
+PATH_BY_SLOT = {1: 0, 2: 1, 3: 2, 4: 3, 5: 0}
 
 AXES = ("A", "B", "C")
 
@@ -170,7 +179,7 @@ DEFAULT_JITTER_VERTICAL_RATIO = 0.20
 # 計算で決まらない値。添付サンプル（R48h20b15-2.json）の値をそのまま使う
 DEFAULT_TEMPLATE: Dict[str, Any] = {
     "IsLocal": True,
-    "FocalDistance": 2.0,
+    "FocalDistance": 1.5,
     "Aperture": 15.0,
     "Hue": 120.0,
     "Saturation": 100.0,
@@ -179,7 +188,7 @@ DEFAULT_TEMPLATE: Dict[str, Any] = {
     "LookAtMeYOffset": 0.0,
     "Zoom": 45.0,
     "Exposure": 0.0,
-    "Speed": 14.0,
+    "Speed": 3.0,
     "Duration": 2.0,
     "PathIndex": 0,
 }
@@ -203,6 +212,8 @@ DEFAULT_MENU = {
 # カメラ設定が未受信のときの既定（アバター側の既定値と同じ）。実寸。
 DEFAULT_CAMERA = {
     "Zoom": 45.0,           # CamDroneOrbitGuideSetup.ZoomDefault
+    "FocalDistance": 1.5,   # CamDroneOrbitGuideSetup.FocalDistanceDefault
+    "Aperture": 15.0,       # CamDroneOrbitGuideSetup.ApertureDefault
     "Duration": 2.0,        # CamDroneOrbitGuideSetup.DurationDefault
     "Speed": 3.0,           # CamDroneOrbitGuideSetup.SpeedDefault
 }
@@ -210,6 +221,8 @@ DEFAULT_CAMERA = {
 # 正規化された 0〜1 を実寸へ戻すための範囲
 CAMERA_RANGE = {
     "Zoom": (ZOOM_MIN, ZOOM_MAX),
+    "FocalDistance": (FOCAL_DISTANCE_MIN, FOCAL_DISTANCE_MAX),
+    "Aperture": (APERTURE_MIN, APERTURE_MAX),
     "Duration": (DURATION_MIN, DURATION_MAX),
     "Speed": (SPEED_MIN, SPEED_MAX),
 }
@@ -1183,6 +1196,8 @@ def generate(slot_number: int, state: State, config: Config, log: Logger,
         log.info(line)
     template = dict(config.template)
     template.update(camera)
+    # 書き出し先のパスはスロットで決まる。同時に1本しか作らないので固定でよい
+    template["PathIndex"] = PATH_BY_SLOT.get(slot_number, 0)
 
     try:
         laps = config.laps.get(inputs.points, 8)
@@ -1206,8 +1221,13 @@ def generate(slot_number: int, state: State, config: Config, log: Logger,
     else:
         log.info(f"  傾き / 目印   = {inputs.tilt:+.1f} 度 / {mark:+.1f} 度 "
                  f"{compass_name(mark)} = {mark_end}（プレイヤー基準、0 が正面奥）")
-    log.info(f"  カメラ        = Zoom {camera['Zoom']:.1f} / "
-             f"Duration {camera['Duration']:.2f} 秒 / Speed {camera['Speed']:.2f}")
+    log.info(f"  レンズ        = Zoom {camera['Zoom']:.1f} / "
+             f"FocalDistance {camera['FocalDistance']:.2f} / "
+             f"Aperture {camera['Aperture']:.2f}")
+    log.info(f"  動き          = Duration {camera['Duration']:.2f} 秒 / "
+             f"Speed {camera['Speed']:.2f}")
+    log.info(f"  書き出し先    = Path {template['PathIndex']}"
+             f"（Pivot {slot_number} 固定）")
     log.info(f"  点数          = {inputs.points} × {laps}周 = {len(entries)} 点")
     log.info(f"  周回の向き    = {'右回り' if inputs.clockwise else '左回り'}（上から見て）")
     if effective_jitter > 0.0:
