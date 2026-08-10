@@ -96,10 +96,16 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         // 寿命 = 半径を動かしたときに残る尾の長さ。短いほど追従が良い。
         // 常時表示数 = 円周に撒く粒の数。半径によらず一定なので、
         // 半径が大きいほど破線が粗くなる（半径 7m で約 15cm 間隔）。
-        private const float RingDotSize = 0.02f;
-        private const float RingLifetime = 0.3f;
-        private const float RingLiveCount = 300f;
-        private const int RingMaxParticles = 320;
+        // 旋回円は帯のメッシュ。パーティクルだと粒がカメラを向いてしまい矢印が
+        // 円に沿わないうえ、半径を大きくすると粒の間隔が開いて途切れる。
+        //
+        // 見て調整するのはこの3つ。
+        //   BandHeight    帯の縦幅(m)。細くても見えればよいので控えめにしてある
+        //   BandArrowSpan 矢印1つぶんの長さ(m)。半径によらず一定に保つ
+        //   BandSegments  円周の分割数。増やすと滑らかになるが頂点も増える
+        private const float BandHeight = 0.12f;
+        private const float BandArrowSpan = 0.6f;
+        private const int BandSegments = 128;
 
         // 配色。中心軸・旋回円・最下点・仮想床を色でも見分けられるようにする。
         //
@@ -119,6 +125,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         private const string CenterTexturePath = AssetDir + "/image/marker_crosshair.png";
         private const string LowPointTexturePath = AssetDir + "/image/marker_diamond.png";
         private const string FloorTexturePath = AssetDir + "/image/marker_ring.png";
+        private const string BandTexturePath = AssetDir + "/image/band_strip_arrows.png";
 
         // 目印は3種類あるので、粒の大きさで見分けられるようにする。
         // 最下点が一番目立つべきなので最大にしている。
@@ -250,7 +257,9 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             EnsureDirectory(AssetDir + "/Materials");
 
             var pillarMaterial = BuildGuideMaterial("CamDrone_OrbitGuide", AxisColor);
-            var ringMaterial = BuildGuideMaterial("CamDrone_OrbitRing", RingColor);
+            var ringMaterial = BuildMarkMaterial(
+                BandTexturePath, "CamDrone_OrbitRing", RingColor);
+            var bandMesh = BuildBandMesh();
             // 印は用途ごとに絵が違うので、マテリアルも分ける
             var centerMaterial = BuildMarkMaterial(
                 CenterTexturePath, "CamDrone_MarkCenter", AxisColor);
@@ -278,7 +287,8 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             {
                 var slotNumber = i + 1;
                 var guide = BuildGuideHierarchy(slots[i], pillarMaterial, ringMaterial,
-                    centerMaterial, lowPointMaterial, floorMaterial, yawSource, notes);
+                    bandMesh, centerMaterial, lowPointMaterial, floorMaterial,
+                    yawSource, notes);
                 var controller = BuildController(slotNumber, clips);
 
                 ConfigureMergeAnimator(guide.gameObject, controller);
@@ -359,8 +369,8 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         // -------------------------------------------------------------------
 
         private static Transform BuildGuideHierarchy(Transform slot,
-            Material pillarMaterial, Material ringMaterial, Material centerMaterial,
-            Material lowPointMaterial, Material floorMaterial,
+            Material pillarMaterial, Material ringMaterial, Mesh bandMesh,
+            Material centerMaterial, Material lowPointMaterial, Material floorMaterial,
             Transform yawSource, List<string> notes)
         {
             var guide = EnsureChild(slot, GuideRootName);
@@ -462,7 +472,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             tiltRing.localPosition = Vector3.zero;
             tiltRing.localRotation = Quaternion.identity;
             tiltRing.localScale = Vector3.one * RadiusDefault;
-            ConfigureRingParticle(tiltRing.gameObject, ringMaterial);
+            ConfigureBandMesh(tiltRing.gameObject, ringMaterial, bandMesh);
 
             // X 軸まわりに傾けるので、円周上で最も高低差が出るのは局所 Z 軸上の点。
             // 半径と一緒に動かすため、位置は半径のクリップ側でアニメーションする。
@@ -684,6 +694,75 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         /// Unity の Cylinder プリミティブは高さ 2 なので、Y スケールは
         /// 必要な長さの半分を入れる。コライダーは不要なので消す。
         /// </summary>
+        /// <summary>
+        /// 半径 1・高さ 1 の帯（円筒の側面だけ）を作る。蓋は無い。
+        ///
+        /// 裏面も描くために、同じ面を法線を反転してもう一組持たせている。
+        /// シェーダの Cull 設定に依存せず、内側からも外側からも見える。
+        ///
+        /// U は周回方向に 0〜1。実際の繰り返し数はマテリアルのタイリングで決め、
+        /// 半径に追従させる（BuildScaleClip 参照）。
+        /// </summary>
+        private static Mesh BuildBandMesh()
+        {
+            var path = AssetDir + "/Materials/CamDrone_Band.mesh";
+            var existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            if (existing != null) return existing;
+
+            var seg = BandSegments;
+            var verts = new Vector3[(seg + 1) * 2];
+            var uvs = new Vector2[verts.Length];
+            for (var i = 0; i <= seg; i++)
+            {
+                var t = (float)i / seg;
+                var a = t * Mathf.PI * 2f;
+                var x = Mathf.Cos(a);
+                var z = Mathf.Sin(a);
+                verts[i * 2] = new Vector3(x, -0.5f, z);
+                verts[i * 2 + 1] = new Vector3(x, 0.5f, z);
+                uvs[i * 2] = new Vector2(t, 0f);
+                uvs[i * 2 + 1] = new Vector2(t, 1f);
+            }
+
+            var tris = new List<int>(seg * 12);
+            for (var i = 0; i < seg; i++)
+            {
+                int a = i * 2, b = i * 2 + 1, c = i * 2 + 2, d = i * 2 + 3;
+                tris.Add(a); tris.Add(b); tris.Add(c);
+                tris.Add(c); tris.Add(b); tris.Add(d);
+                // 裏面
+                tris.Add(c); tris.Add(b); tris.Add(a);
+                tris.Add(d); tris.Add(b); tris.Add(c);
+            }
+
+            var mesh = new Mesh { name = "CamDrone_Band" };
+            mesh.vertices = verts;
+            mesh.uv = uvs;
+            mesh.triangles = tris.ToArray();
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            AssetDatabase.CreateAsset(mesh, path);
+            return mesh;
+        }
+
+        private static void ConfigureBandMesh(GameObject go, Material material, Mesh mesh)
+        {
+            // 旧構成のパーティクルが残っていたら消す
+            var oldPs = go.GetComponent<ParticleSystem>();
+            if (oldPs != null) Undo.DestroyObjectImmediate(oldPs);
+            var oldPsr = go.GetComponent<ParticleSystemRenderer>();
+            if (oldPsr != null) Undo.DestroyObjectImmediate(oldPsr);
+
+            EnsureComponent<MeshFilter>(go).sharedMesh = mesh;
+
+            var renderer = EnsureComponent<MeshRenderer>(go);
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            renderer.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
+            renderer.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;
+        }
+
         private static void ConfigurePillarMesh(GameObject go, Material material)
         {
             // 古い構成のパーティクルが残っていたら消す
@@ -734,34 +813,6 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             shape.enabled = false;   // 原点そのものに出す
         }
 
-
-        /// <summary>
-        /// 旋回円。円周上に粒を撒いて破線として見せる。
-        ///
-        /// 寿命が残像の長さそのものになる。scalingMode が Shape なので
-        /// Transform のスケールは「粒を出す位置」にしか効かず、すでに出ている粒は
-        /// 寿命が尽きるまで古い半径の位置に残る。半径を動かすと軌跡が尾を引くため、
-        /// 寿命は短くし、発生率を上げて密度を保つ。
-        /// 発生率は VRChat の評価対象外で、効くのは最大パーティクル数だけ。
-        ///
-        /// 粒の大きさは半径によらず一定。半径が大きいほど間隔が開いて
-        /// 破線が粗くなるが、輪郭を追う用途には足りる。
-        /// </summary>
-        private static void ConfigureRingParticle(GameObject go, Material material)
-        {
-            var ps = EnsureParticle(go, material, RingDotSize,
-                RingLifetime, RingLiveCount / RingLifetime, RingMaxParticles);
-            var shape = ps.shape;
-            shape.enabled = true;
-            shape.shapeType = ParticleSystemShapeType.Circle;
-            shape.radius = 1f;          // Transform の一様スケールが実際の半径になる
-            shape.radiusThickness = 0f; // 縁からのみ放出＝円周
-            shape.arc = 360f;
-            shape.arcMode = ParticleSystemShapeMultiModeValue.Random;
-            // Circle は既定で XY 平面。X に -90 度回して床と水平にする
-            shape.rotation = new Vector3(-90f, 0f, 0f);
-            shape.position = Vector3.zero;
-        }
 
         /// <remarks>
         /// 既存のマテリアルがあっても色は毎回上書きする。そうしないと配色を
@@ -903,9 +954,18 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             var clip = NewClip(name);
             var curve = Constant(radius);
 
+            // 帯は半径だけを広げる。縦幅は半径によらず一定に保ちたいので Y は別
             clip.SetCurve(TiltRingPath, typeof(Transform), "m_LocalScale.x", curve);
-            clip.SetCurve(TiltRingPath, typeof(Transform), "m_LocalScale.y", curve);
+            clip.SetCurve(TiltRingPath, typeof(Transform), "m_LocalScale.y", Constant(BandHeight));
             clip.SetCurve(TiltRingPath, typeof(Transform), "m_LocalScale.z", curve);
+
+            // 矢印の大きさを半径によらず一定にする。周長 ÷ 矢印1つぶんが繰り返し数。
+            // 半径はパラメータに対して線形なので、繰り返し数も線形に補間されて合う。
+            var repeats = Mathf.Max(1f, 2f * Mathf.PI * radius / BandArrowSpan);
+            clip.SetCurve(TiltRingPath, typeof(MeshRenderer),
+                "material._MainTex_ST.x", Constant(repeats));
+            clip.SetCurve(TiltRingPath, typeof(MeshRenderer),
+                "material._MainTex_ST.y", Constant(1f));
 
             // 最下点の目印も円周上に保つ。目印自体は拡大させたくないので
             // スケールではなく位置で動かす
