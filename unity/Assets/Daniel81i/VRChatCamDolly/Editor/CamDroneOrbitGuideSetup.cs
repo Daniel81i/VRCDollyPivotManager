@@ -256,6 +256,10 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             EnsureDirectory(AssetDir + "/Expression");
             EnsureDirectory(AssetDir + "/Materials");
 
+            // マテリアルとメッシュは実行時に生成する。配布物には入っていないので
+            // 初回導入では置き場所ごと無い。CreateAsset はフォルダが無いと失敗する。
+            EnsureAssetFolder(AssetDir + "/Materials");
+
             var pillarMaterial = BuildGuideMaterial("CamDrone_OrbitGuide", AxisColor);
             var ringMaterial = BuildMarkMaterial(
                 BandTexturePath, "CamDrone_OrbitRing", RingColor);
@@ -397,6 +401,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             pillar.localPosition = new Vector3(0f, (HeightMin + HeightMax) * 0.5f, 0f);
             pillar.localRotation = Quaternion.identity;
             ConfigurePillarMesh(pillar.gameObject, pillarMaterial);
+            pillar.gameObject.SetActive(false);
 
             // 仮想床の中心軸。柱の根元だけでは床のどこに立っているか分かりにくいので、
             // 地面と平行に寝かせた輪を置く。高さは動かないので guide 直下でよい。
@@ -406,37 +411,28 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             floorMarker.localScale = Vector3.one;
             ConfigureMarkPointParticle(floorMarker.gameObject, floorMaterial, FloorMarkerSize,
                 ParticleSystemRenderMode.HorizontalBillboard);
+            floorMarker.gameObject.SetActive(false);
 
             var center = EnsureChild(guide, CenterName);
             center.localPosition = new Vector3(0f, HeightDefault, 0f);
             center.localRotation = Quaternion.identity;
             center.localScale = Vector3.one;
 
-            // Cube は既存のものがあれば取り込む
-            var cube = center.Find(CubeName);
-            if (cube == null)
+            // Cube は中心を示すために置いていたが、十字の印と役目が重複する。
+            // MeshRenderer とマテリアルスロットを1つずつ食うので作らない。
+            // 旧構成で作られていたら消す。
+            foreach (var parent in new[] { center, slot })
             {
-                var existing = slot.Find(CubeName);
-                if (existing != null)
-                {
-                    Undo.SetTransformParent(existing, center, "Move Cube");
-                    existing.localPosition = Vector3.zero;
-                    cube = existing;
-                    notes.Add($"{slot.name} の既存 Cube を {GuideRootName}/{CenterName} 配下へ移動しました。");
-                }
-                else
-                {
-                    cube = CreateCube(center);
-                }
+                var legacyCube = parent.Find(CubeName);
+                if (legacyCube != null) Undo.DestroyObjectImmediate(legacyCube.gameObject);
             }
-
-            cube.localPosition = Vector3.zero;
 
             var marker = EnsureChild(center, MarkerName);
             marker.localPosition = Vector3.zero;
             marker.localRotation = Quaternion.identity;
             marker.localScale = Vector3.one;
             ConfigureMarkPointParticle(marker.gameObject, centerMaterial, CenterMarkerSize);
+            marker.gameObject.SetActive(false);
 
             // 旋回円は中心点とは別の高さを持てるよう、Center の外に出す
             var ringCenter = EnsureChild(guide, RingCenterName);
@@ -473,6 +469,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             tiltRing.localRotation = Quaternion.identity;
             tiltRing.localScale = Vector3.one * RadiusDefault;
             ConfigureBandMesh(tiltRing.gameObject, ringMaterial, bandMesh);
+            tiltRing.gameObject.SetActive(false);
 
             // X 軸まわりに傾けるので、円周上で最も高低差が出るのは局所 Z 軸上の点。
             // 半径と一緒に動かすため、位置は半径のクリップ側でアニメーションする。
@@ -481,6 +478,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             lowPoint.localRotation = Quaternion.identity;
             lowPoint.localScale = Vector3.one;
             ConfigureMarkPointParticle(lowPoint.gameObject, lowPointMaterial, LowPointSize);
+            lowPoint.gameObject.SetActive(false);
 
             // 旧構成（TiltPivot が YawFollow 直下）の残骸を掃除する
             var legacyPivot = yawFollow.Find(TiltPivotName);
@@ -626,23 +624,6 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             return false;
         }
 
-        private static Transform CreateCube(Transform parent)
-        {
-            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            cube.name = CubeName;
-            Undo.RegisterCreatedObjectUndo(cube, "Create Cube");
-            Undo.SetTransformParent(cube.transform, parent, "Parent Cube");
-            cube.transform.localPosition = Vector3.zero;
-            cube.transform.localRotation = Quaternion.identity;
-            cube.transform.localScale = Vector3.one * 0.1f;
-
-            // 当たり判定は不要
-            var collider = cube.GetComponent<Collider>();
-            if (collider != null) Undo.DestroyObjectImmediate(collider);
-
-            return cube.transform;
-        }
-
         // -------------------------------------------------------------------
         // パーティクル
         // -------------------------------------------------------------------
@@ -703,6 +684,14 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         /// U は周回方向に 0〜1。実際の繰り返し数はマテリアルのタイリングで決め、
         /// 半径に追従させる（BuildScaleClip 参照）。
         /// </summary>
+        private static void EnsureAssetFolder(string path)
+        {
+            if (AssetDatabase.IsValidFolder(path)) return;
+            var parent = path.Substring(0, path.LastIndexOf('/'));
+            EnsureAssetFolder(parent);
+            AssetDatabase.CreateFolder(parent, path.Substring(path.LastIndexOf('/') + 1));
+        }
+
         private static Mesh BuildBandMesh()
         {
             var path = AssetDir + "/Materials/CamDrone_Band.mesh";
