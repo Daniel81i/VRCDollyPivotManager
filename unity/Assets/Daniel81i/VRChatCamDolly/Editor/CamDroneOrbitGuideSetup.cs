@@ -101,6 +101,16 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         private const float RingLiveCount = 300f;
         private const int RingMaxParticles = 320;
 
+        // 配色。中心軸・旋回円・最下点・仮想床を色でも見分けられるようにする。
+        //
+        // 中心軸と旋回円が同じ色だと、どちらの円を見ているのか分からなくなる。
+        // シアンとオレンジは補色に近く、VR の雑多な背景でも取り違えにくい。
+        // 最下点は旋回円の上にある1点なので、円より目立つ色を当てる。
+        private static readonly Color AxisColor = new Color(0.30f, 0.90f, 1.00f);
+        private static readonly Color RingColor = new Color(1.00f, 0.55f, 0.10f);
+        private static readonly Color LowPointColor = new Color(1.00f, 0.30f, 0.85f);
+        private static readonly Color FloorColor = new Color(0.60f, 1.00f, 0.30f);
+
         // 位置を指す印に貼るテクスチャ。用途ごとに絵と向きを変える。
         //
         // 床に立てる2つ（中心軸・最下点）は VerticalBillboard にして、
@@ -239,11 +249,15 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             EnsureDirectory(AssetDir + "/Expression");
             EnsureDirectory(AssetDir + "/Materials");
 
-            var material = BuildGuideMaterial();
+            var pillarMaterial = BuildGuideMaterial("CamDrone_OrbitGuide", AxisColor);
+            var ringMaterial = BuildGuideMaterial("CamDrone_OrbitRing", RingColor);
             // 印は用途ごとに絵が違うので、マテリアルも分ける
-            var centerMaterial = BuildMarkMaterial(CenterTexturePath, "CamDrone_MarkCenter");
-            var lowPointMaterial = BuildMarkMaterial(LowPointTexturePath, "CamDrone_MarkLow");
-            var floorMaterial = BuildMarkMaterial(FloorTexturePath, "CamDrone_MarkFloor");
+            var centerMaterial = BuildMarkMaterial(
+                CenterTexturePath, "CamDrone_MarkCenter", AxisColor);
+            var lowPointMaterial = BuildMarkMaterial(
+                LowPointTexturePath, "CamDrone_MarkLow", LowPointColor);
+            var floorMaterial = BuildMarkMaterial(
+                FloorTexturePath, "CamDrone_MarkFloor", FloorColor);
             var clips = BuildClips();
 
             Undo.SetCurrentGroupName("Setup CamDrone Orbit Guide");
@@ -263,8 +277,8 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             for (var i = 0; i < SlotCount; i++)
             {
                 var slotNumber = i + 1;
-                var guide = BuildGuideHierarchy(slots[i], material, centerMaterial,
-                    lowPointMaterial, floorMaterial, yawSource, notes);
+                var guide = BuildGuideHierarchy(slots[i], pillarMaterial, ringMaterial,
+                    centerMaterial, lowPointMaterial, floorMaterial, yawSource, notes);
                 var controller = BuildController(slotNumber, clips);
 
                 ConfigureMergeAnimator(guide.gameObject, controller);
@@ -344,8 +358,9 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         // ヒエラルキー
         // -------------------------------------------------------------------
 
-        private static Transform BuildGuideHierarchy(Transform slot, Material material,
-            Material centerMaterial, Material lowPointMaterial, Material floorMaterial,
+        private static Transform BuildGuideHierarchy(Transform slot,
+            Material pillarMaterial, Material ringMaterial, Material centerMaterial,
+            Material lowPointMaterial, Material floorMaterial,
             Transform yawSource, List<string> notes)
         {
             var guide = EnsureChild(slot, GuideRootName);
@@ -371,7 +386,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             var pillar = EnsureChild(guide, PillarName);
             pillar.localPosition = new Vector3(0f, (HeightMin + HeightMax) * 0.5f, 0f);
             pillar.localRotation = Quaternion.identity;
-            ConfigurePillarMesh(pillar.gameObject, material);
+            ConfigurePillarMesh(pillar.gameObject, pillarMaterial);
 
             // 仮想床の中心軸。柱の根元だけでは床のどこに立っているか分かりにくいので、
             // 地面と平行に寝かせた輪を置く。高さは動かないので guide 直下でよい。
@@ -447,7 +462,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             tiltRing.localPosition = Vector3.zero;
             tiltRing.localRotation = Quaternion.identity;
             tiltRing.localScale = Vector3.one * RadiusDefault;
-            ConfigureRingParticle(tiltRing.gameObject, material);
+            ConfigureRingParticle(tiltRing.gameObject, ringMaterial);
 
             // X 軸まわりに傾けるので、円周上で最も高低差が出るのは局所 Z 軸上の点。
             // 半径と一緒に動かすため、位置は半径のクリップ側でアニメーションする。
@@ -748,18 +763,25 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             shape.position = Vector3.zero;
         }
 
-        private static Material BuildGuideMaterial()
+        /// <remarks>
+        /// 既存のマテリアルがあっても色は毎回上書きする。そうしないと配色を
+        /// 変えてセットアップし直しても、前回の色のまま残る。
+        /// </remarks>
+        private static Material BuildGuideMaterial(string materialName, Color color)
         {
-            var path = AssetDir + "/Materials/CamDrone_OrbitGuide.mat";
-            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
-            if (existing != null) return existing;
+            var path = $"{AssetDir}/Materials/{materialName}.mat";
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null)
+            {
+                var shader = Shader.Find("Particles/Standard Unlit")
+                             ?? Shader.Find("Legacy Shaders/Particles/Additive")
+                             ?? Shader.Find("Unlit/Color");
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, path);
+            }
 
-            var shader = Shader.Find("Particles/Standard Unlit")
-                         ?? Shader.Find("Legacy Shaders/Particles/Additive")
-                         ?? Shader.Find("Unlit/Color");
-
-            var material = new Material(shader) { color = new Color(0.3f, 0.9f, 1f, 1f) };
-            AssetDatabase.CreateAsset(material, path);
+            material.color = color;
+            EditorUtility.SetDirty(material);
             return material;
         }
 
@@ -771,14 +793,15 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         /// </summary>
         /// <param name="texturePath">貼るテクスチャ。</param>
         /// <param name="materialName">Materials/ 配下に作るマテリアル名。</param>
-        private static Material BuildMarkMaterial(string texturePath, string materialName)
+        private static Material BuildMarkMaterial(string texturePath, string materialName,
+            Color color)
         {
             var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
             if (texture == null)
             {
                 Debug.LogWarning($"[CamDrone Orbit] {texturePath} が見つかりません。" +
                                  "印は無地で作ります。");
-                return BuildGuideMaterial();
+                return BuildGuideMaterial(materialName, color);
             }
 
             ConfigureMarkTextureImport(texturePath);
@@ -793,7 +816,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 AssetDatabase.CreateAsset(material, path);
             }
 
-            material.color = new Color(0.3f, 0.9f, 1f, 1f);
+            material.color = color;
             material.mainTexture = texture;
             // アルファブレンド（Fade）。透過 PNG をそのまま活かす
             if (material.HasProperty("_Mode")) material.SetFloat("_Mode", 2f);
