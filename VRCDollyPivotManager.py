@@ -102,7 +102,7 @@ TILT_MAX = 30.0         # CamDroneOrbitGuideSetup.TiltMaxDeg
 # CamDroneOrbitGuideSetup.TiltDirMinDeg / TiltDirMaxDeg と必ず同じ値にすること。
 # 片方だけ直すとガイドの目印と生成される軌道がずれる。
 LOW_POINT_START_DEG = 90.0
-LOW_POINT_SWEEP_DEG = -180.0
+LOW_POINT_SWEEP_DEG = 180.0
 
 SLOT_COUNT = 5          # CamDroneOrbitGuideSetup.SlotCount
 
@@ -666,7 +666,7 @@ def build_path(inputs: OrbitInput, laps: int, jitter: float,
     center = (inputs.center_x, inputs.center_height, inputs.center_z)
     ring_origin = (inputs.center_x, inputs.ring_height, inputs.center_z)
 
-    # 最下点の方位。0% が右、100% が左（LOW_POINT_START_DEG 参照）
+    # 最下点の方位。0% が右、50% が手前、100% が左（LOW_POINT_START_DEG 参照）
     azimuth = LOW_POINT_START_DEG + inputs.tilt_dir * LOW_POINT_SWEEP_DEG
 
     # Unity は左手系なので、上から見ると θ を増やす向きは反時計回り（左回り）。
