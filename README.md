@@ -153,9 +153,9 @@ JSON では `\` をエスケープする必要があるため `\\` と書くか�
 
 ### 追加で書けるキー
 
-上の12個のほかに `template` を書くと、`FocalDistance` `Aperture` `Hue` など計算で決まらない値を上書きできます。既定値は下記の「出力」を参照してください。
+上の12個のほかに `template` を書くと、`Hue` `Saturation` `Exposure` など計算で決まらない値を上書きできます。既定値は下記の「出力」を参照してください。
 
-`Zoom` / `Duration` / `Speed` も書けますが、**アバターのメニューから届いた値が優先されます。**
+カメラ設定の5項目（`Zoom` `FocalDistance` `Aperture` `Duration` `Speed`）と `PathIndex` も書けますが、**アバターから届いた値と Pivot ごとの割り当てが優先されます。**
 
 ## ログ
 
@@ -192,7 +192,9 @@ VRCDollyPivotManager
 
 パペットは % での大まかな操作しかできず、正確な値を作れません。VRChat は OSC の**入力**も受け付けるので、ツールから直接パラメータを書き込みます。
 
-トレイ → 「高さを正確に設定（OSC送信）」→ Object N → 値 を選ぶと、その点の注視点と円の高さが選んだメートル値ちょうどになります。正規化はツール側で行います。
+トレイ → 「高さを正確に設定（OSC送信）」→ Object N → 値 を選ぶと、その Pivot の注視点と円の高さが選んだメートル値ちょうどになります。正規化はツール側で行います。
+
+**メニューの項目名は `Object N` のままです。**アバター側の `Pivot N` と同じものを指します。
 
 送信先は config の `send_port` です。VRChat 側の OSC 受信ポートと一致している必要があります。
 
@@ -242,7 +244,7 @@ Confirm 時のログでは値の出どころが分かります。
 
 ## アバターと一致必須の値
 
-**次の10組はアバター側と PC 側の両方が同じ値を持っています。仕様として固定で、config からは変えられません。**
+**次の12組はアバター側と PC 側の両方が同じ値を持っています。仕様として固定で、config からは変えられません。**
 
 | PC 側（`VRCDollyPivotManager.py`） | アバター側 | 値 | 意味 |
 |---|---|---|---|
@@ -255,8 +257,10 @@ Confirm 時のログでは値の出どころが分かります。
 | `ZOOM_MIN` / `ZOOM_MAX` | `ZoomMin` / `ZoomMax` | 20 / 150 | 画角の範囲 |
 | `DURATION_MIN` / `DURATION_MAX` | `DurationMin` / `DurationMax` | 0.1 / 60 | 1点あたりの秒数の範囲 |
 | `SPEED_MIN` / `SPEED_MAX` | `SpeedMin` / `SpeedMax` | 0.1 / 15 | 速度の範囲 |
+| `FOCAL_DISTANCE_MIN` / `_MAX` | `FocalDistanceMin` / `FocalDistanceMax` | 0 / 10 | 焦点距離の範囲 |
+| `APERTURE_MIN` / `APERTURE_MAX` | `ApertureMin` / `ApertureMax` | 1.4 / 32 | 絞りの範囲 |
 | `DEFAULT_MENU` | 各パラメータの既定値 | 8項目 | 未受信時に使う値 |
-| `DEFAULT_CAMERA` | `ZoomDefault` / `DurationDefault` / `SpeedDefault` | 45 / 2 / 3 | 同上（カメラ設定） |
+| `DEFAULT_CAMERA` | `ZoomDefault` ほか | 5項目 | 同上（カメラ設定） |
 
 **アバター側を変えたら、必ず PC 側も同じ値に直して両方をビルドし直してください。** 片方だけ直しても動いてしまい、生成結果が静かにずれます。
 
@@ -583,51 +587,80 @@ Confirm のログに出どころが表示されるので、確認できます。
 
 ### カメラ設定
 
-**`Zoom` / `Duration` / `Speed` はアバターのメニューから変えられます。**
-
-ルートメニューの `Camera` にあります。**スロットには属さず、全体で1組**です。本仕様では一度に1本しかパスを作れないため、マーカーごとに分けていません。
+**5項目をアバターのメニューから変えられます。** ルートメニューの `Camera` にあります。**スロットには属さず、全体で1組**です。本仕様では一度に1本しかパスを作れないため、Pivot ごとに分けていません。
 
 ```
 Camera
-├ Zoom             パペット
-├ Zoom 初期化       ボタン
-├ Duration         パペット
-├ Duration 初期化   ボタン
-├ Speed            パペット
-└ Speed 初期化      ボタン
+├ Lens ▸
+│  ├ Zoom               パペット
+│  ├ Zoom 初期化         ボタン
+│  ├ FocalDistance      パペット
+│  ├ FocalDistance 初期化 ボタン
+│  ├ Aperture           パペット
+│  └ Aperture 初期化     ボタン
+└ Motion ▸
+   ├ Duration           パペット
+   ├ Duration 初期化     ボタン
+   ├ Speed              パペット
+   └ Speed 初期化        ボタン
 ```
+
+VRChat のメニューは1階層に8個までしか置けません。項目ごとに初期化ボタンを付けると10個になるため、意味で `Lens` と `Motion` に分けています。
 
 | | 範囲 | 既定 | 意味 |
 |---|---|---|---|
 | `Zoom` | 20〜150 | 45 | 画角 |
+| `FocalDistance` | 0〜10 | 1.5 | 焦点距離 |
+| `Aperture` | 1.4〜32 | 15 | 絞り |
 | `Duration` | 0.1〜60 | 2 | 1点あたりの秒数 |
 | `Speed` | 0.1〜15 | 3 | 速度 |
+
+いずれも VRChat の公式既定値・範囲と一致させてあります。
 
 パペットは % での大まかな操作しかできず既定値ちょうどには戻せないため、**項目ごとに初期化ボタン**を添えてあります。押している間だけ既定値を書き戻します。
 
 Confirm 時のログに、パペットの % と実寸の両方が出ます。
 
 ```
-  Zoom         パペット  19.2%  ->     45.00       [受信]
-  Duration     パペット   3.2%  ->      2.00       [受信]
-  Speed        パペット  19.5%  ->      3.00       [初期]
+  Zoom          パペット  19.2%  ->     45.00       [受信]
+  FocalDistance パペット  15.0%  ->      1.50       [受信]
+  Aperture      パペット  44.4%  ->     15.00       [受信]
+  Duration      パペット   3.2%  ->      2.00       [受信]
+  Speed         パペット  19.5%  ->      3.00       [初期]
 ```
 
 `[初期]` は一度も受信しておらず既定値を使ったことを示します。
 
 **`Duration` はダイヤルが粗いです。** 範囲が 0.1〜60 秒と広いので、1% 動かすと 0.6 秒変わります。既定の 2 秒はダイヤルの 3.2% の位置にあり、狙って合わせるのは困難です。**正確な値が要るときは初期化ボタンで 2 秒に戻してください。**
 
+**`Duration` と `Speed` は同時には効きません。** VRChat の Motion Control が時間ベースなら `Duration`、速度ベースなら Fly Speed スライダーが使われます。`Duration` を変えても再生が変わらないときは、Motion Control を確認してください。
+
+### 書き出し先のパス
+
+**Pivot ごとに固定です。メニューからは変えられません。**
+
+| Pivot | Path |
+|---|---|
+| 1 | 0 |
+| 2 | 1 |
+| 3 | 2 |
+| 4 | 3 |
+| 5 | **0** |
+
+VRChat の Multi ストリーミングは 4 本までしか扱えず、それを超えたパスは無視されます。そのため 0〜3 に収め、5 番目は 1 番目と同じ 0 を使っています。
+
+Pivot 1 と Pivot 5 で生成すると**同じパスへ書き込まれる**ので、片方が上書きされます。
+
 ### 計算で決まらない残りの値
 
 上記以外はサンプルの値をそのまま使います。config の `template` で上書きできます。
 
 ```
-IsLocal true / FocalDistance 2.0 / Aperture 15.0 / Hue 120.0 / Saturation 100.0
-Lightness 50.0 / LookAtMeXOffset 0.0 / LookAtMeYOffset 0.0 / Exposure 0.0
-PathIndex 0
+IsLocal true / Hue 120.0 / Saturation 100.0 / Lightness 50.0
+LookAtMeXOffset 0.0 / LookAtMeYOffset 0.0 / Exposure 0.0
 ```
 
-`Zoom` / `Duration` / `Speed` も `template` に書けますが、**アバターから届いた値が優先されます。**
+カメラ設定の5項目と `PathIndex` も `template` に書けますが、**アバターから届いた値とスロットの割り当てが優先されます。**
 
 ## 自動読み込み
 
