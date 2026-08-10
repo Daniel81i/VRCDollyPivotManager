@@ -176,9 +176,11 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         // ここを変えるときは VRCDollyPivotManager 側の LOW_POINT_START_DEG /
         // LOW_POINT_SWEEP_DEG も必ず同じ値にすること。片方だけ直すと
         // ガイドの目印と生成される軌道がずれる。
+        // 0% が右、50% が手前、100% が左。中心軸の手前側の半周を使う。
+        // 目印が向こう側だと中心軸に隠れて見えないため、奥側ではなく手前側。
         private const float TiltDirMinDeg = 90f;        // LOW_POINT_START_DEG
-        private const float TiltDirMaxDeg = -90f;       // + LOW_POINT_SWEEP_DEG
-        private const float TiltDirDefaultDeg = 0f;     // DEFAULT_MENU["TiltDir"]
+        private const float TiltDirMaxDeg = 270f;       // + LOW_POINT_SWEEP_DEG
+        private const float TiltDirDefaultDeg = 180f;   // DEFAULT_MENU["TiltDir"]
 
         // 生成する JSON へそのまま書くカメラ設定。全スロット共通で1組しか持たない。
         // 本仕様では一度に1本しかパスを作れないため、マーカーごとに分ける必要がない。
