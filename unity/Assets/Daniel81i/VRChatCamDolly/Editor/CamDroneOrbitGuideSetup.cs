@@ -69,10 +69,10 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         // PC 側と一致必須の定数
         //
         // パペットは 0〜1 の正規化値しか送らないので、実寸へ戻すのは PC 側。
-        // 以下の範囲は camdrone_dolly_tray.py にも同じ値が置いてあり、
+        // 以下の範囲は VRCDollyPivotManager.py にも同じ値が置いてあり、
         // 片方だけ変えると届く % は同じでも別の実寸になり、生成結果が静かにずれる。
         //
-        // ここを変えたときは camdrone_dolly_tray.py の対応する定数も同じ値に
+        // ここを変えたときは VRCDollyPivotManager.py の対応する定数も同じ値に
         // 直して、アバターと exe の両方をビルドし直すこと。
         // 対応表は camdrone-dolly-tray の README「アバターと一致必須の値」にある。
         // -------------------------------------------------------------------
@@ -149,7 +149,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         // 増える向きは VRChat のラジアルパペットのダイヤルと同じ向きに合わせてある。
         // 逆にするとパペットを右へ倒したのに最下点が左へ行く（2026-08-09 に実測）。
         //
-        // ここを変えるときは camdrone_dolly_tray 側の LOW_POINT_START_DEG /
+        // ここを変えるときは VRCDollyPivotManager 側の LOW_POINT_START_DEG /
         // LOW_POINT_SWEEP_DEG も必ず同じ値にすること。片方だけ直すと
         // ガイドの目印と生成される軌道がずれる。
         private const float TiltDirMinDeg = 90f;        // LOW_POINT_START_DEG
@@ -199,13 +199,13 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             var floorPointer = avatar.transform.Find(FloorPointerName);
             if (floorPointer == null)
             {
-                var message =
+                var warning =
                     $"アバター直下に '{FloorPointerName}' が見つかりません。\n\n" +
                     "このツールは FloorPointer の固定点（Object_1〜Object_5）に" +
                     "ガイドを取り付けるアドオンです。\n" +
                     "先に FloorPointer を導入し、アバター直下に配置してください。";
-                Debug.LogWarning($"[CamDrone Orbit] {message.Replace("\n", " ")}", avatar);
-                EditorUtility.DisplayDialog("CamDrone Orbit", message, "OK");
+                Debug.LogWarning($"[CamDrone Orbit] {warning.Replace("\n", " ")}", avatar);
+                EditorUtility.DisplayDialog("CamDrone Orbit", warning, "OK");
                 return;
             }
 
@@ -215,12 +215,12 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 var slot = floorPointer.Find("Object_" + i);
                 if (slot == null)
                 {
-                    var message =
+                    var warning =
                         $"'{FloorPointerName}/Object_{i}' が見つかりません。\n\n" +
                         $"FloorPointer に Object_1〜Object_{SlotCount} が揃っている必要があります。" +
                         "構成を確認してください。";
-                    Debug.LogWarning($"[CamDrone Orbit] {message.Replace("\n", " ")}", floorPointer);
-                    EditorUtility.DisplayDialog("CamDrone Orbit", message, "OK");
+                    Debug.LogWarning($"[CamDrone Orbit] {warning.Replace("\n", " ")}", floorPointer);
+                    EditorUtility.DisplayDialog("CamDrone Orbit", warning, "OK");
                     return;
                 }
 
