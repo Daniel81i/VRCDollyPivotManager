@@ -26,6 +26,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "unity" / "Assets"
 
+# Windows の Python は端末の文字コードで出力するため、CI では cp1252 になる。
+# 進捗もエラーも日本語なので、そのままだと表示しようとして UnicodeEncodeError で
+# 落ちる。ビルドの成否とは無関係なところで失敗するので、出力側を UTF-8 に固定する。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 GUID_PATTERN = re.compile(r"^guid:\s*([0-9a-fA-F]{32})\s*$", re.MULTILINE)
 
 
