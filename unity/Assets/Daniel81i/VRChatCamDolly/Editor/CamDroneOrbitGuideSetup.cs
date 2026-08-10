@@ -101,13 +101,20 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         private const float RingLiveCount = 300f;
         private const int RingMaxParticles = 320;
 
-        // 位置を指す印に貼るテクスチャ
-        private const string MarkTexturePath = AssetDir + "/image/Arrow.png";
+        // 位置を指す印に貼るテクスチャ。用途ごとに絵と向きを変える。
+        //
+        // 床に立てる2つ（中心軸・最下点）は VerticalBillboard にして、
+        // 立ったまま Y 軸まわりに回りユーザーの方を向く。
+        // 仮想床の印だけ HorizontalBillboard で地面と平行に寝かせる。
+        private const string CenterTexturePath = AssetDir + "/image/marker_crosshair.png";
+        private const string LowPointTexturePath = AssetDir + "/image/marker_diamond.png";
+        private const string FloorTexturePath = AssetDir + "/image/marker_ring.png";
 
         // 目印は3種類あるので、粒の大きさで見分けられるようにする。
         // 最下点が一番目立つべきなので最大にしている。
         private const float CenterMarkerSize = 0.14f;
         private const float LowPointSize = 0.22f;
+        private const float FloorMarkerSize = 0.30f;
 
         /// <summary>
         /// 1周あたりのポイント数の選択肢。Int パラメータにそのまま点数が入るので、
@@ -233,7 +240,10 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             EnsureDirectory(AssetDir + "/Materials");
 
             var material = BuildGuideMaterial();
-            var markMaterial = BuildMarkMaterial();
+            // 印は用途ごとに絵が違うので、マテリアルも分ける
+            var centerMaterial = BuildMarkMaterial(CenterTexturePath, "CamDrone_MarkCenter");
+            var lowPointMaterial = BuildMarkMaterial(LowPointTexturePath, "CamDrone_MarkLow");
+            var floorMaterial = BuildMarkMaterial(FloorTexturePath, "CamDrone_MarkFloor");
             var clips = BuildClips();
 
             Undo.SetCurrentGroupName("Setup CamDrone Orbit Guide");
@@ -253,7 +263,8 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             for (var i = 0; i < SlotCount; i++)
             {
                 var slotNumber = i + 1;
-                var guide = BuildGuideHierarchy(slots[i], material, markMaterial, yawSource, notes);
+                var guide = BuildGuideHierarchy(slots[i], material, centerMaterial,
+                    lowPointMaterial, floorMaterial, yawSource, notes);
                 var controller = BuildController(slotNumber, clips);
 
                 ConfigureMergeAnimator(guide.gameObject, controller);
@@ -334,7 +345,8 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         // -------------------------------------------------------------------
 
         private static Transform BuildGuideHierarchy(Transform slot, Material material,
-            Material markMaterial, Transform yawSource, List<string> notes)
+            Material centerMaterial, Material lowPointMaterial, Material floorMaterial,
+            Transform yawSource, List<string> notes)
         {
             var guide = EnsureChild(slot, GuideRootName);
             guide.localPosition = Vector3.zero;
@@ -361,10 +373,14 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             pillar.localRotation = Quaternion.identity;
             ConfigurePillarMesh(pillar.gameObject, material);
 
-            // 床の基準点は柱の根元が示すので、専用のマーカーは持たない。
-            // 旧構成で作られていたら消す。
-            var legacyFloorMarker = guide.Find(FloorMarkerName);
-            if (legacyFloorMarker != null) Undo.DestroyObjectImmediate(legacyFloorMarker.gameObject);
+            // 仮想床の中心軸。柱の根元だけでは床のどこに立っているか分かりにくいので、
+            // 地面と平行に寝かせた輪を置く。高さは動かないので guide 直下でよい。
+            var floorMarker = EnsureChild(guide, FloorMarkerName);
+            floorMarker.localPosition = Vector3.zero;
+            floorMarker.localRotation = Quaternion.identity;
+            floorMarker.localScale = Vector3.one;
+            ConfigureMarkPointParticle(floorMarker.gameObject, floorMaterial, FloorMarkerSize,
+                ParticleSystemRenderMode.HorizontalBillboard);
 
             var center = EnsureChild(guide, CenterName);
             center.localPosition = new Vector3(0f, HeightDefault, 0f);
@@ -395,7 +411,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             marker.localPosition = Vector3.zero;
             marker.localRotation = Quaternion.identity;
             marker.localScale = Vector3.one;
-            ConfigureMarkPointParticle(marker.gameObject, markMaterial, CenterMarkerSize);
+            ConfigureMarkPointParticle(marker.gameObject, centerMaterial, CenterMarkerSize);
 
             // 旋回円は中心点とは別の高さを持てるよう、Center の外に出す
             var ringCenter = EnsureChild(guide, RingCenterName);
@@ -439,7 +455,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             lowPoint.localPosition = new Vector3(0f, 0f, RadiusDefault);
             lowPoint.localRotation = Quaternion.identity;
             lowPoint.localScale = Vector3.one;
-            ConfigureMarkPointParticle(lowPoint.gameObject, markMaterial, LowPointSize);
+            ConfigureMarkPointParticle(lowPoint.gameObject, lowPointMaterial, LowPointSize);
 
             // 旧構成（TiltPivot が YawFollow 直下）の残骸を掃除する
             var legacyPivot = yawFollow.Find(TiltPivotName);
@@ -607,7 +623,8 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         // -------------------------------------------------------------------
 
         private static ParticleSystem EnsureParticle(GameObject go, Material material,
-            float size, float lifetime, float rate, int maxParticles)
+            float size, float lifetime, float rate, int maxParticles,
+            ParticleSystemRenderMode renderMode = ParticleSystemRenderMode.Billboard)
         {
             var ps = go.GetComponent<ParticleSystem>();
             if (ps == null) ps = Undo.AddComponent<ParticleSystem>(go);
@@ -632,8 +649,10 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             var renderer = go.GetComponent<ParticleSystemRenderer>();
             if (renderer != null)
             {
-                renderer.renderMode = ParticleSystemRenderMode.Billboard;
+                renderer.renderMode = renderMode;
                 renderer.sharedMaterial = material;
+                // Horizontal/Vertical Billboard は自前で向きを決めるので
+                // alignment は効かない。Billboard のときだけ意味を持つ。
                 renderer.alignment = ParticleSystemRenderSpace.View;
                 renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 renderer.receiveShadows = false;
@@ -686,11 +705,12 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         /// 以前は 60 粒を重ねて塊に見せていたが、絵を貼れば 1 粒で足りる。
         /// ビルボードなのでどの向きからでも同じ見え方になる。
         /// </summary>
-        private static void ConfigureMarkPointParticle(GameObject go, Material material, float size)
+        private static void ConfigureMarkPointParticle(GameObject go, Material material, float size,
+            ParticleSystemRenderMode renderMode = ParticleSystemRenderMode.VerticalBillboard)
         {
             // 1 粒を出したまま消さない。寿命を無限にはできないので十分長く取り、
             // 発生率ではなく Burst で 1 粒だけ出す
-            var ps = EnsureParticle(go, material, size, 3600f, 0f, 1);
+            var ps = EnsureParticle(go, material, size, 3600f, 0f, 1, renderMode);
             var emission = ps.emission;
             emission.rateOverTime = 0f;
             emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 1) });
@@ -749,19 +769,21 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         /// テクスチャが無い環境でも動くよう、見つからなければ
         /// 無地のガイドマテリアルで代用する。
         /// </summary>
-        private static Material BuildMarkMaterial()
+        /// <param name="texturePath">貼るテクスチャ。</param>
+        /// <param name="materialName">Materials/ 配下に作るマテリアル名。</param>
+        private static Material BuildMarkMaterial(string texturePath, string materialName)
         {
-            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(MarkTexturePath);
+            var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
             if (texture == null)
             {
-                Debug.LogWarning($"[CamDrone Orbit] {MarkTexturePath} が見つかりません。" +
+                Debug.LogWarning($"[CamDrone Orbit] {texturePath} が見つかりません。" +
                                  "印は無地で作ります。");
                 return BuildGuideMaterial();
             }
 
-            ConfigureMarkTextureImport();
+            ConfigureMarkTextureImport(texturePath);
 
-            var path = AssetDir + "/Materials/CamDrone_OrbitMark.mat";
+            var path = $"{AssetDir}/Materials/{materialName}.mat";
             var material = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (material == null)
             {
@@ -785,9 +807,9 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         /// alphaIsTransparency を立てないと、透過部分の縁に黒い輪郭が出る。
         /// 2048 のままだとテクスチャ容量を無駄に使うので 256 に落とす。
         /// </summary>
-        private static void ConfigureMarkTextureImport()
+        private static void ConfigureMarkTextureImport(string texturePath)
         {
-            var importer = AssetImporter.GetAtPath(MarkTexturePath) as TextureImporter;
+            var importer = AssetImporter.GetAtPath(texturePath) as TextureImporter;
             if (importer == null) return;
 
             var changed = false;
@@ -801,7 +823,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             if (changed)
             {
                 importer.SaveAndReimport();
-                Debug.Log($"[CamDrone Orbit] {MarkTexturePath} のインポート設定を調整しました" +
+                Debug.Log($"[CamDrone Orbit] {texturePath} のインポート設定を調整しました" +
                           "（透過の扱い / 最大 256）。");
             }
         }
@@ -897,6 +919,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             var clip = NewClip(name);
             var curve = Constant(visible ? 1f : 0f);
             clip.SetCurve(PillarName, typeof(GameObject), "m_IsActive", curve);
+            clip.SetCurve(FloorMarkerName, typeof(GameObject), "m_IsActive", curve);
             clip.SetCurve(CenterName + "/" + MarkerName, typeof(GameObject), "m_IsActive", curve);
             clip.SetCurve(TiltRingPath, typeof(GameObject), "m_IsActive", curve);
             clip.SetCurve(LowPointPath, typeof(GameObject), "m_IsActive", curve);
