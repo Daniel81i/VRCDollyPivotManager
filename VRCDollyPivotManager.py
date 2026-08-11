@@ -904,7 +904,7 @@ def establish_transport(config: Config, log: Logger) -> Tuple[str, Optional[Any]
             log.warn("OSCQuery を使えません（zeroconf が見つかりません）")
             continue
 
-        service = oscquery.Service(APP_NAME, config.receive_port)
+        service = oscquery.Service(oscquery.SERVICE_NAME, config.receive_port)
         ok, note = service.start(advertised_paths())
         if ok:
             log.info(f"接続方法: OSCQuery — {note}")
@@ -1002,7 +1002,7 @@ def refresh_from_oscquery(state: State, config: Config, log: Logger) -> None:
         log.info("=" * 68)
         return
 
-    values = oscquery.fetch_from_any(log=log.info)
+    values = oscquery.fetch_from_any(log=log.info, skip_name=oscquery.SERVICE_NAME)
     if not values:
         log.warn("現在値を取得できませんでした。アバターの読み込み直しで代用してください")
         log.info("=" * 68)

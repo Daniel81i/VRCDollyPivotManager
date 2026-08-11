@@ -35,6 +35,13 @@ except ImportError:  # zeroconf が無ければ OSCQuery は使えない
 OSCJSON_TYPE = "_oscjson._tcp.local."
 OSC_TYPE = "_osc._udp.local."
 
+# mDNS で名乗る名前。exe をリネームしても変わらないよう固定する。
+SERVICE_NAME = "VRCDollyPivotManager"
+
+# VRChat 自身が名乗る名前の接頭辞。同じネットワークに別の OSCQuery
+# サービスが居ることがあるため、問い合わせ先はこれを優先する。
+VRCHAT_PREFIX = "VRChat"
+
 PARAM_ROOT = "/avatar/parameters/"
 
 
@@ -228,7 +235,9 @@ def fetch_parameters(host: str, port: int, timeout: float = 3.0) -> Dict[str, An
     """
     url = f"http://{host}:{port}/avatar"
     with urllib.request.urlopen(url, timeout=timeout) as response:
-        tree = json.loads(response.read().decode("utf-8"))
+        # BOM を付けて返す実装があるため utf-8-sig で読む。
+        # 素の utf-8 だと先頭の BOM で json.loads が落ちる。
+        tree = json.loads(response.read().decode("utf-8-sig"))
 
     values: Dict[str, Any] = {}
     _walk(tree, values)
@@ -236,15 +245,28 @@ def fetch_parameters(host: str, port: int, timeout: float = 3.0) -> Dict[str, An
 
 
 def fetch_from_any(timeout: float = 3.0,
-                   log: Optional[Callable[[str], None]] = None) -> Dict[str, Any]:
-    """見つかった OSCQuery サービスを順に試し、最初に取れた現在値を返す。"""
+                   log: Optional[Callable[[str], None]] = None,
+                   skip_name: Optional[str] = None) -> Dict[str, Any]:
+    """見つかった OSCQuery サービスを順に試し、最初に取れた現在値を返す。
+
+    skip_name には自分が広告している名前を渡す。こちらも OSCQuery サービス
+    として名乗っているので、指定しないと自分自身に問い合わせにいく。
+    """
     services = discover(timeout)
     if not services:
         if log:
             log("OSCQuery サービスが見つかりませんでした（VRChat 側の OSC 有効化を確認）")
         return {}
 
+    # VRChat を先に試す。別のサービスが先に値を返すと、そちらを
+    # VRChat の現在値として取り込んでしまう。
+    services.sort(key=lambda s: not s[2].startswith(VRCHAT_PREFIX))
+
     for host, port, name in services:
+        # 自分の広告。問い合わせても現在値は返らないので飛ばす
+        if skip_name and name.split(".")[0] == skip_name:
+            continue
+
         try:
             values = fetch_parameters(host, port, timeout)
         except Exception as exc:
