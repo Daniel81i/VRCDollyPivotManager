@@ -73,11 +73,18 @@ def collect() -> list[tuple[str, Path, Path | None]]:
     return entries
 
 
+# 同じ入力なら同じ出力になるよう固定する。0（1970年）にすると
+# 古すぎる日付を弾く読み取り側に当たる可能性があるため、実在しそうな日付にする。
+FIXED_MTIME = 1577836800  # 2020-01-01 00:00:00 UTC
+
+
 def add(tar: tarfile.TarFile, name: str, payload: bytes) -> None:
     info = tarfile.TarInfo(name)
     info.size = len(payload)
-    info.mtime = 0  # 同じ入力なら同じ出力になるよう固定する
-    info.mode = 0o644
+    info.mtime = FIXED_MTIME
+    info.mode = 0o700
+    info.uname = "user"
+    info.gname = "user"
     tar.addfile(info, io.BytesIO(payload))
 
 
@@ -88,14 +95,16 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     entries = collect()
-    with tarfile.open(out, "w:gz") as tar:
+    # Unity 自身が書き出す .unitypackage と同じ形式にそろえる。
+    # 既定の PAX ではなく GNU 形式で、並びも asset -> asset.meta -> pathname。
+    with tarfile.open(out, "w:gz", format=tarfile.GNU_FORMAT) as tar:
         for guid, meta, content in entries:
             # 展開先はプロジェクトルートからの相対。区切りは常に /
             pathname = meta.with_suffix("").relative_to(ROOT / "unity").as_posix()
-            add(tar, f"{guid}/pathname", pathname.encode("utf-8"))
-            add(tar, f"{guid}/asset.meta", meta.read_bytes())
             if content is not None:
                 add(tar, f"{guid}/asset", content.read_bytes())
+            add(tar, f"{guid}/asset.meta", meta.read_bytes())
+            add(tar, f"{guid}/pathname", pathname.encode("utf-8"))
 
     folders = sum(1 for _, _, c in entries if c is None)
     print(f"{out.name} を作成しました "
