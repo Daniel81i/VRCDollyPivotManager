@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using System.Reflection;
 using UnityEditor;
@@ -40,6 +41,8 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
     internal static class CamDroneOrbitGuideSetup
     {
         private const string MenuPath = "Tools/CamDrone/Setup Orbit Guide";
+        private const string SingleMenuPath =
+            "Tools/CamDrone/Setup Orbit Guide (Object_5 Only)";
         private const string RemoveMenuPath = "Tools/CamDrone/Remove Orbit Guide";
 
         private const string AssetDir = "Assets/Daniel81i/VRChatCamDolly";
@@ -78,6 +81,14 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         // -------------------------------------------------------------------
 
         private const int SlotCount = 5;                // SLOT_COUNT
+
+        /// <summary>
+        /// 単独スロット版が使う固定点。Object_1〜4 は FloorPointer 本来の用途に残す。
+        /// 同時に読み込ませられるパスは1本なので、5組あっても1組しか使えない。
+        /// PC 側は CamDrone/Obj{N}/... を 1〜5 まで一律に待ち受けるため、
+        /// どの番号を選んでもツール側の変更は要らない。
+        /// </summary>
+        private const int SingleSlotIndex = 5;
 
         // 高さ: 仮想床からの相対。既定 1.2 m
         private const float HeightMin = -1.5f;          // HEIGHT_MIN
@@ -210,7 +221,19 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         private static bool ValidateRun() => FindAvatar() != null;
 
         [MenuItem(MenuPath)]
-        private static void Run()
+        private static void Run() => Run(false);
+
+        [MenuItem(SingleMenuPath, true)]
+        private static bool ValidateRunSingle() => FindAvatar() != null;
+
+        /// <summary>
+        /// Object_5 だけにガイドとメニューを付ける。5組ぶんの
+        /// パーティクル・メッシュ・パラメータを持たずに済む。
+        /// </summary>
+        [MenuItem(SingleMenuPath)]
+        private static void RunSingle() => Run(true);
+
+        private static void Run(bool singleSlot)
         {
             var avatar = FindAvatar();
             if (avatar == null)
@@ -235,8 +258,12 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 return;
             }
 
+            var targets = singleSlot
+                ? new[] { SingleSlotIndex }
+                : Enumerable.Range(1, SlotCount).ToArray();
+
             var slots = new List<Transform>();
-            for (var i = 1; i <= SlotCount; i++)
+            foreach (var i in targets)
             {
                 var slot = floorPointer.Find("Object_" + i);
                 if (slot == null)
@@ -279,7 +306,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             var undoGroup = Undo.GetCurrentGroup();
 
             var notes = new List<string>();
-            var subMenus = new VRCExpressionsMenu[SlotCount];
+            var subMenus = new VRCExpressionsMenu[targets.Length];
 
             var menuRoot = EnsureChild(avatar.transform, MenuRootName);
 
@@ -289,9 +316,18 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             // 5本のコンストレイントの拠り所にはしない。
             var yawSource = avatar.transform;
 
-            for (var i = 0; i < SlotCount; i++)
+            // 対象外の固定点に前回のガイドが残っていると、消したはずの分まで
+            // 数え上げられる。単独スロット版の意味が無くなるので掃除する。
+            for (var i = 1; i <= SlotCount; i++)
             {
-                var slotNumber = i + 1;
+                if (targets.Contains(i)) continue;
+                var stale = floorPointer.Find($"Object_{i}/{GuideRootName}");
+                if (stale != null) Undo.DestroyObjectImmediate(stale.gameObject);
+            }
+
+            for (var i = 0; i < targets.Length; i++)
+            {
+                var slotNumber = targets[i];
                 var guide = BuildGuideHierarchy(slots[i], pillarMaterial, ringMaterial,
                     bandMesh, centerMaterial, lowPointMaterial, floorMaterial,
                     yawSource, notes);
@@ -307,7 +343,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             ConfigureMergeAnimator(menuRoot.gameObject, BuildCameraController());
             ConfigureCameraParameters(menuRoot.gameObject);
 
-            var rootMenu = BuildRootMenu(subMenus);
+            var rootMenu = BuildRootMenu(subMenus, singleSlot);
             ConfigureMenuInstaller(menuRoot.gameObject, rootMenu);
 
             Undo.CollapseUndoOperations(undoGroup);
@@ -315,7 +351,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             EditorUtility.SetDirty(avatar);
 
             var message =
-                $"{SlotCount} 点に旋回円ガイドを設定しました。\n\n" +
+                $"{targets.Length} 点に旋回円ガイドを設定しました（{string.Join(", ", targets.Select(n => "Object_" + n))}）。\n\n" +
                 $"高さ（中心・円とも）: {HeightMin} 〜 {HeightMax} m（既定 {HeightDefault} m）\n" +
                 $"半径: {RadiusMin} 〜 {RadiusMax} m（既定 {RadiusDefault} m）\n\n" +
                 $"傾き: {TiltMinDeg} 〜 {TiltMaxDeg} 度（既定 {TiltDefaultDeg} 度）\n" +
@@ -323,7 +359,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 $"1周あたりの点数: {string.Join(" / ", PointChoices)}（既定 {PointsDefault}）\n" +
                 $"揺らぎ: {string.Join("% / ", RandomChoices)}%（既定 {RandomDefault}%）\n" +
                 $"周回の向き: 既定 {(ClockwiseDefault ? "右回り" : "左回り")}\n\n" +
-                "メニュー: CamDrone Orbit > Object 1〜5 >\n" +
+                $"メニュー: CamDrone Orbit > Pivot{(singleSlot ? "" : " 1〜5")} >\n" +
                 "  Center Height / Ring Height / Ring -> Center / Radius /\n" +
                 "  Tilt(Angle, Low Point) / Path(Points, 右回り, ランダム) /\n" +
                 "  Guide / Confirm\n\n" +
@@ -1415,12 +1451,16 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             return menu;
         }
 
-        private static VRCExpressionsMenu BuildRootMenu(VRCExpressionsMenu[] subMenus)
+        private static VRCExpressionsMenu BuildRootMenu(VRCExpressionsMenu[] subMenus,
+            bool singleSlot)
         {
+            // 固定点が1つなら選ぶ余地が無いので、Pivot を選ぶ階層を挟まない
+            var pivot = singleSlot ? subMenus[0] : BuildPivotMenu(subMenus);
+
             var menu = NewMenu("CamDroneOrbit_Root");
             menu.controls = new List<VRCExpressionsMenu.Control>
             {
-                SubMenuControl("Pivot", BuildPivotMenu(subMenus)),
+                SubMenuControl("Pivot", pivot),
                 SubMenuControl("Camera", BuildCameraMenu()),
             };
             EditorUtility.SetDirty(menu);

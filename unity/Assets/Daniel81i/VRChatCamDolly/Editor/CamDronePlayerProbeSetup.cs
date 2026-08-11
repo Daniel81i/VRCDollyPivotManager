@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using System.Reflection;
 using UnityEditor;
@@ -28,6 +29,8 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
     internal static class CamDronePlayerProbeSetup
     {
         private const string MenuPath = "Tools/CamDrone/Setup Player Probe (Plan A)";
+        private const string SingleMenuPath =
+            "Tools/CamDrone/Setup Player Probe (Object_5 Only)";
         private const string RemoveMenuPath = "Tools/CamDrone/Remove Player Probe";
 
         private const string ControllerPath =
@@ -41,6 +44,20 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         private const string FloorPointerName = "FloorPointer";
 
         private const int SlotCount = 5;
+
+        /// <summary>
+        /// 単独スロット版が使う固定点。Object_1〜4 は FloorPointer 本来の用途に残す。
+        /// </summary>
+        private const int SingleSlotIndex = 5;
+
+        /// <summary>
+        /// このセットアップが対象にする固定点。Run が決め、Animator と
+        /// MA Parameters の生成が同じ一覧を見る。null なら全スロット。
+        /// </summary>
+        private static int[] activeSlots;
+
+        private static IEnumerable<int> ActiveSlots =>
+            activeSlots ?? Enumerable.Range(1, SlotCount);
 
         /// <summary>
         /// レイの最大距離(m)。_Ratio はこの値で正規化された 0〜1 で届く。
@@ -106,8 +123,21 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         private static bool ValidateRun() => FindAvatar() != null;
 
         [MenuItem(MenuPath)]
-        private static void Run()
+        private static void Run() => Run(false);
+
+        [MenuItem(SingleMenuPath, true)]
+        private static bool ValidateRunSingle() => FindAvatar() != null;
+
+        /// <summary>
+        /// Object_5 だけに測距レイを付ける。同時に使えるパスは1本なので、
+        /// 5点ぶんのレイ（15本、Poor の上限ちょうど）は要らないという判断。
+        /// </summary>
+        [MenuItem(SingleMenuPath)]
+        private static void RunSingle() => Run(true);
+
+        private static void Run(bool singleSlot)
         {
+            activeSlots = singleSlot ? new[] { SingleSlotIndex } : null;
             var avatar = FindAvatar();
             if (avatar == null)
             {
@@ -132,7 +162,8 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             }
 
             var slots = new List<Transform>();
-            for (var i = 1; i <= SlotCount; i++)
+            var numbers = new List<int>();
+            foreach (var i in ActiveSlots)
             {
                 var slot = floorPointer.Find("Object_" + i);
                 if (slot == null)
@@ -147,6 +178,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 }
 
                 slots.Add(slot);
+                numbers.Add(i);
             }
 
             var controller = BuildController();
@@ -162,8 +194,17 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             var aimTarget = EnsureChild(probeRoot, AimTargetName);
             ConfigureAimTarget(aimTarget.gameObject);
 
+            // 対象外の固定点に前回のレイが残っていると、消したはずの分まで
+            // 数え上げられる。単独スロット版の意味が無くなるので掃除する。
+            for (var i = 1; i <= SlotCount; i++)
+            {
+                if (numbers.Contains(i)) continue;
+                var stale = floorPointer.Find($"Object_{i}/{RigChildName}");
+                if (stale != null) Undo.DestroyObjectImmediate(stale.gameObject);
+            }
+
             var warnings = new List<string>();
-            for (var i = 0; i < SlotCount; i++)
+            for (var i = 0; i < slots.Count; i++)
             {
                 // 1本構成だった頃の残骸を掃除する
                 var legacy = slots[i].Find("PlayerProbe");
@@ -188,7 +229,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                     ConfigureAimConstraint(probe.gameObject, aimTarget, warnings);
 
                     var result = EnsureChild(probe, ResultChildName);
-                    ConfigureRaycast(probe.gameObject, ParamBase(i + 1, axis.Name), result, warnings);
+                    ConfigureRaycast(probe.gameObject, ParamBase(numbers[i], axis.Name), result, warnings);
                 }
             }
 
@@ -196,8 +237,9 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             EditorUtility.SetDirty(avatar);
 
             var message =
-                $"{SlotCount} 点 × 3本 = {SlotCount * ProbeAxes.Length} 本のレイを設定しました。\n\n" +
-                $"パラメータ: {ParamBase(1, "A")} 形式で _Hit / _Ratio / _Distance（全て Local Only）\n" +
+                $"{slots.Count} 点 × 3本 = {slots.Count * ProbeAxes.Length} 本のレイを設定しました。\n" +
+                $"対象: {string.Join(", ", numbers.Select(n => "Object_" + n))}\n\n" +
+                $"パラメータ: {ParamBase(numbers[0], "A")} 形式で _Hit / _Ratio / _Distance（全て Local Only）\n" +
                 $"レイ最大距離: {MaxDistance} m（_Ratio × {MaxDistance} が実距離）\n" +
                 $"基線長: {Baseline} m（PC側の計算と揃えること）\n\n" +
                 "シーンを保存してからアバターをアップロードしてください。";
@@ -315,7 +357,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         /// <summary>VRCRaycast が駆動する全パラメータ名。Animator と MA Parameters で同じ一覧を使う。</summary>
         private static IEnumerable<string> ParameterNames()
         {
-            for (var slot = 1; slot <= SlotCount; slot++)
+            foreach (var slot in ActiveSlots)
             {
                 foreach (var axis in ProbeAxes)
                 {

@@ -89,13 +89,36 @@ git push origin v0.1.0
 
 1. `VRCDollyPivotManager.unitypackage` をダブルクリック（または Unity で `Assets > Import Package > Custom Package`）してインポートする
 2. Hierarchy でアバター（`VRCAvatarDescriptor` を持つオブジェクト）を選ぶ
-3. `Tools > CamDrone > Setup Player Probe (Plan A)` を実行
-4. `Tools > CamDrone > Setup Orbit Guide` を実行
+3. `Tools > CamDrone > Setup Player Probe (Object_5 Only)` を実行
+4. `Tools > CamDrone > Setup Orbit Guide (Object_5 Only)` を実行
 5. アバターをアップロード
 
 **アニメーション・アニメーター・メニュー・マテリアルはセットアップ実行時に自動生成されます。** unitypackage に入っているのはエディタ拡張のスクリプト2つとテクスチャ4枚だけです。
 
 取り外すときは `Tools > CamDrone > Remove Orbit Guide` と `Remove Player Probe` を実行してください。
+
+#### 単独スロット版と5スロット版
+
+**通常は `(Object_5 Only)` の付いたほうを使ってください。** 同時に読み込ませられるパスは1本なので、固定点を5つぶん持っても1つしか使えません。
+
+`(Object_5 Only)` の付かない従来版は、5つの固定点すべてにガイドと測距レイを付けます。**性能の差は小さくありません。**
+
+| | 5スロット版 | **Object_5 のみ** |
+|---|---|---|
+| **VRCRaycast** | **15**（Poor 判定の上限ちょうど） | **3** |
+| ParticleSystem | 15 | 3 |
+| MeshRenderer | 10 | 2 |
+| ポリゴン | 2,560 | 512 |
+| パラメータ | 100 | 20 |
+
+単独スロット版では次のようになります。
+
+- **`Object_1`〜`Object_4` は FloorPointer 本来の用途に残ります。**旋回の中心には `Object_5` を使ってください
+- メニューが1段浅くなります（`Pivot` を選ぶ階層が消え、`Pivot` の下がそのまま設定です）
+- **PathIndex は 0 固定です。**Multi ストリーミング（同時4パス）は使えません
+- 対象外の固定点に前回のガイドやレイが残っていれば、実行時に自動で消します
+
+**PC 側のツールは共通です。**`CamDrone/Obj{N}/...` を 1〜5 まで一律に待ち受ける作りなので、どちらの版でも設定を変える必要はありません。
 
 ### 更新するとき
 
