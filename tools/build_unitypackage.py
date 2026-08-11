@@ -78,6 +78,20 @@ def collect() -> list[tuple[str, Path, Path | None]]:
 FIXED_MTIME = 1577836800  # 2020-01-01 00:00:00 UTC
 
 
+def add_dir(tar: tarfile.TarFile, name: str) -> None:
+    """GUID のディレクトリ自体のエントリ。
+
+    Unity はこれを書く。無いと中の asset / asset.meta / pathname を
+    1件も見つけられず、インポートウィザードが出ないまま黙って終わる。
+    ログにも何も残らないので、原因が分かりにくい。
+    """
+    info = tarfile.TarInfo(name)
+    info.type = tarfile.DIRTYPE
+    info.mtime = FIXED_MTIME
+    info.mode = 0o777  # Unity が書く値に合わせる
+    tar.addfile(info)
+
+
 def add(tar: tarfile.TarFile, name: str, payload: bytes) -> None:
     info = tarfile.TarInfo(name)
     info.size = len(payload)
@@ -101,6 +115,7 @@ def main() -> int:
         for guid, meta, content in entries:
             # 展開先はプロジェクトルートからの相対。区切りは常に /
             pathname = meta.with_suffix("").relative_to(ROOT / "unity").as_posix()
+            add_dir(tar, guid)
             if content is not None:
                 add(tar, f"{guid}/asset", content.read_bytes())
             add(tar, f"{guid}/asset.meta", meta.read_bytes())
