@@ -125,7 +125,9 @@ git push origin v0.1.0
 
 ### 手順
 
-1. `VRCDollyPivotManager.unitypackage` をダブルクリック（または Unity で `Assets > Import Package > Custom Package`）してインポートする
+1. 対象のプロジェクトを開き、`Assets > Import Package > Custom Package...` から `VRCDollyPivotManager.unitypackage` を選ぶ
+
+   Project ウィンドウへドラッグ＆ドロップでも入ります。**ダブルクリックは避けてください。**`.unitypackage` の関連付けが Unity に向いていないと、何も起こらずログにも何も出ません。
 2. Hierarchy でアバター（`VRCAvatarDescriptor` を持つオブジェクト）を選ぶ
 3. `Tools > CamDrone > Setup Player Probe (Object_5 Only)` を実行
 4. `Tools > CamDrone > Setup Orbit Guide (Object_5 Only)` を実行
