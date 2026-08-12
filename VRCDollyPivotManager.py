@@ -883,12 +883,29 @@ def advertised_paths() -> List[str]:
     return paths
 
 
-def establish_transport(config: Config, log: Logger) -> Tuple[str, Optional[Any]]:
-    """設定された優先順で接続方法を確立する。
+def bind_server(config: Config, port: int, disp: Any) -> Tuple[Any, int]:
+    """UDP で待ち受ける。port が 0 なら OS が空きを選ぶ。
 
-    どちらの方式でも UDP の待ち受けは共通で、違いは
-    「VRChat に送信先をどう知らせるか」だけ。
-    oscquery は mDNS と HTTP で自分を広告し、osc は固定ポートに頼る。
+    実際に確保できた番号を返す。0 を渡したときは呼び出し側が知る術がない。
+    """
+    server = osc_server.ThreadingOSCUDPServer((config.host, port), disp)
+    return server, server.server_address[1]
+
+
+def establish_transport(config: Config, log: Logger,
+                        disp: Any) -> Tuple[str, Optional[Any], Optional[Any], int]:
+    """設定された優先順で接続方法を確立し、待ち受けまで済ませる。
+
+    待ち受けるポートは方式によって別にする。
+
+    - **oscquery** — 番号は mDNS で VRChat へ伝えるので、設定値である必要が
+      無い。空きポートを取る。UDP リピーターのような「特定の番号へ配る」
+      仕組みと番号が重ならないため、同じ配信を二重に受け取らずに済む。
+    - **osc** — 番号を伝える手段が無いので、設定値をそのまま使う。
+
+    両者を同じ番号にすると、リピーター経由の配信と VRChat からの直接送信が
+    重なる。Confirm は立ち上がりで検出しているが、2系統がずれて届くと
+    立ち上がりが2回成立し、1回の押下で2本生成されてしまう。
     """
     order = [config.connection]
     if config.fallback:
@@ -896,25 +913,37 @@ def establish_transport(config: Config, log: Logger) -> Tuple[str, Optional[Any]
 
     for method in order:
         if method == "osc":
-            log.info(f"接続方法: OSC(UDP) 固定ポート {config.receive_port}")
+            try:
+                server, port = bind_server(config, config.receive_port, disp)
+            except OSError as exc:
+                log.error(f"固定ポート {config.receive_port} で待ち受けられません: {exc}")
+                continue
+            log.info(f"接続方法: OSC(UDP) 固定ポート {port}")
             log.info("  VRChat 側の OSC 送信先をこのポートに合わせてください")
-            return "osc", None
+            return "osc", None, server, port
 
         if not oscquery.AVAILABLE:
             log.warn("OSCQuery を使えません（zeroconf が見つかりません）")
             continue
 
-        service = oscquery.Service(oscquery.SERVICE_NAME, config.receive_port)
+        try:
+            server, port = bind_server(config, 0, disp)
+        except OSError as exc:
+            log.error(f"待ち受けポートを確保できません: {exc}")
+            continue
+
+        service = oscquery.Service(oscquery.SERVICE_NAME, port)
         ok, note = service.start(advertised_paths())
         if ok:
             log.info(f"接続方法: OSCQuery — {note}")
             log.info("  VRChat が自動で見つけるため、送信先の設定は不要です")
-            return "oscquery", service
+            return "oscquery", service, server, port
 
         log.warn(note)
+        server.server_close()  # 次の方法で取り直す
 
-    log.warn("どの方法も確立できませんでした。固定ポートで待ち受けます")
-    return "osc", None
+    log.error("どの方法でも待ち受けを開始できませんでした")
+    return "osc", None, None, config.receive_port
 
 
 def ingest_snapshot(values: Dict[str, Any], state: State, log: Logger) -> Tuple[int, int]:
@@ -1442,31 +1471,35 @@ def make_icon_image(active: bool) -> Image.Image:
     return image
 
 
-def port_summary(config: Config, http_port: Optional[int]) -> str:
+def port_summary(config: Config, http_port: Optional[int],
+                 recv_port: Optional[int] = None) -> str:
     """実際に使っている番号だけを1行に並べる。
 
     OSCQuery の HTTP ポートは起動のたびに OS が選ぶので、決まるまで出せない。
     素の OSC で動いているときはそもそも存在しない。
     """
     head = f"OSCQuery TCP {http_port} / " if http_port is not None else ""
-    return f"{head}受信 UDP {config.receive_port} / 送信 UDP {config.send_port}"
+    recv = config.receive_port if recv_port is None else recv_port
+    return f"{head}受信 UDP {recv} / 送信 UDP {config.send_port}"
 
 
 def tooltip(config: Config, state: State, mode: str = "osc",
-            http_port: Optional[int] = None) -> str:
+            http_port: Optional[int] = None,
+            recv_port: Optional[int] = None) -> str:
     status = "受信中" if state.is_active() else "待機中"
     label = "OSCQuery" if mode == "oscquery" else "OSC(UDP)"
     return (f"{APP_NAME}\n"
             f"接続: {label}\n"
-            f"{config.host}  {port_summary(config, http_port)}\n"
+            f"{config.host}  {port_summary(config, http_port, recv_port)}\n"
             f"状態: {status}  受信 {state.total_messages} 件 / 生成 {state.generated} 件")
 
 
 def run_tray(config: Config, state: State, log: Logger, server: Any,
              client: Any = None, mode: str = "osc",
-             http_port: Optional[int] = None) -> None:
+             http_port: Optional[int] = None,
+             recv_port: Optional[int] = None) -> None:
     icon = pystray.Icon(APP_NAME, make_icon_image(False),
-                        tooltip(config, state, mode, http_port))
+                        tooltip(config, state, mode, http_port, recv_port))
 
     def on_open_log(_icon: Any, _item: Any) -> None:
         try:
@@ -1592,7 +1625,7 @@ def run_tray(config: Config, state: State, log: Logger, server: Any,
         while True:
             time.sleep(1.0)
             active = state.is_active()
-            icon.title = tooltip(config, state, mode, http_port)
+            icon.title = tooltip(config, state, mode, http_port, recv_port)
             if active != last:
                 icon.icon = make_icon_image(active)
                 last = active
@@ -1613,7 +1646,8 @@ def main() -> int:
     log.info(f"実行フォルダ: {APP_DIR}")
     for note in notes:
         log.info(note)
-    log.info(f"受信ポート: {config.receive_port} / 送信ポート: {config.send_port}")
+    log.info(f"送信ポート: {config.send_port}"
+             f"（受信ポートは接続方法が決まってから確定します）")
     if config.output_dir_note:
         log.warn(config.output_dir_note)
     log.info(f"出力先: {config.output_dir}")
@@ -1625,17 +1659,13 @@ def main() -> int:
     state = State()
     disp = build_dispatcher(state, config, log)
 
-    try:
-        server = osc_server.ThreadingOSCUDPServer((config.host, config.receive_port), disp)
-    except OSError as exc:
-        log.error(f"OSC の待ち受けを開始できませんでした: {exc}")
+    mode, service, server, recv_port = establish_transport(config, log, disp)
+    if server is None:
         log.close()
         return 1
 
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    log.info(f"OSC の待ち受けを開始しました（{config.host}:{config.receive_port}）")
-
-    mode, service = establish_transport(config, log)
+    log.info(f"OSC の待ち受けを開始しました（{config.host}:{recv_port}）")
 
     # 起動直後に現在値を取りに行く。素の OSC では触っていない項目が
     # 届かないため、ここで埋められると読み込み直しが要らなくなる。
@@ -1663,7 +1693,7 @@ def main() -> int:
 
     try:
         http_port = getattr(service, "http_port", None) if service else None
-        run_tray(config, state, log, server, client, mode, http_port)
+        run_tray(config, state, log, server, client, mode, http_port, recv_port)
     finally:
         if service is not None:
             try:
