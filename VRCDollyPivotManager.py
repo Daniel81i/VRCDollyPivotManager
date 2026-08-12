@@ -1442,18 +1442,31 @@ def make_icon_image(active: bool) -> Image.Image:
     return image
 
 
-def tooltip(config: Config, state: State, mode: str = "osc") -> str:
+def port_summary(config: Config, http_port: Optional[int]) -> str:
+    """実際に使っている番号だけを1行に並べる。
+
+    OSCQuery の HTTP ポートは起動のたびに OS が選ぶので、決まるまで出せない。
+    素の OSC で動いているときはそもそも存在しない。
+    """
+    head = f"OSCQuery TCP {http_port} / " if http_port is not None else ""
+    return f"{head}受信 UDP {config.receive_port} / 送信 UDP {config.send_port}"
+
+
+def tooltip(config: Config, state: State, mode: str = "osc",
+            http_port: Optional[int] = None) -> str:
     status = "受信中" if state.is_active() else "待機中"
     label = "OSCQuery" if mode == "oscquery" else "OSC(UDP)"
     return (f"{APP_NAME}\n"
             f"接続: {label}\n"
-            f"受信 {config.host}:{config.receive_port} / 送信 {config.host}:{config.send_port}\n"
+            f"{config.host}  {port_summary(config, http_port)}\n"
             f"状態: {status}  受信 {state.total_messages} 件 / 生成 {state.generated} 件")
 
 
 def run_tray(config: Config, state: State, log: Logger, server: Any,
-             client: Any = None, mode: str = "osc") -> None:
-    icon = pystray.Icon(APP_NAME, make_icon_image(False), tooltip(config, state, mode))
+             client: Any = None, mode: str = "osc",
+             http_port: Optional[int] = None) -> None:
+    icon = pystray.Icon(APP_NAME, make_icon_image(False),
+                        tooltip(config, state, mode, http_port))
 
     def on_open_log(_icon: Any, _item: Any) -> None:
         try:
@@ -1579,7 +1592,7 @@ def run_tray(config: Config, state: State, log: Logger, server: Any,
         while True:
             time.sleep(1.0)
             active = state.is_active()
-            icon.title = tooltip(config, state, mode)
+            icon.title = tooltip(config, state, mode, http_port)
             if active != last:
                 icon.icon = make_icon_image(active)
                 last = active
@@ -1649,7 +1662,8 @@ def main() -> int:
         log.warn(f"OSC 送信クライアントを準備できませんでした: {exc}")
 
     try:
-        run_tray(config, state, log, server, client, mode)
+        http_port = getattr(service, "http_port", None) if service else None
+        run_tray(config, state, log, server, client, mode, http_port)
     finally:
         if service is not None:
             try:
