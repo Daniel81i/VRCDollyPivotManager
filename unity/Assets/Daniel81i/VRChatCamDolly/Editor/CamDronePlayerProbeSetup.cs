@@ -517,18 +517,29 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         private static void SetSingleSource(Component constraint, Transform source, string label,
             List<string> warnings)
         {
-            if (TrySetSourceByReflection(constraint, source, out var reflectionDetail)) return;
+            // 「設定した」ではなく「入っているか」で判断する。
+            // VRC のコンストレイントの Sources は構造体ベースのリストなので、
+            // リフレクションでプロパティを取るとコピーが返る。それを書き換えても
+            // 本体には反映されないが、呼び出し自体は成功を返す。
+            // 以前はその戻り値を信じて打ち切っていたため、Sources が空のまま
+            // 警告も出ず、実機でレイが1本も当たらなかった。
+            TrySetSourceByReflection(constraint, source, out var reflectionDetail);
 
+            if (!SourceIsSet(constraint, source))
+            {
+                using (var so = new SerializedObject(constraint))
+                {
+                    if (TrySetSourceBySerializedProperty(so, source))
+                        so.ApplyModifiedPropertiesWithoutUndo();
+                }
+            }
+
+            if (SourceIsSet(constraint, source)) return;
+
+            warnings.Add($"{label} の Sources に {source.name} を手で設定してください。");
+            Debug.LogWarning($"[CamDrone Probe] {label} の Sources 自動設定に失敗: {reflectionDetail}");
             using (var so = new SerializedObject(constraint))
             {
-                if (TrySetSourceBySerializedProperty(so, source))
-                {
-                    so.ApplyModifiedPropertiesWithoutUndo();
-                    return;
-                }
-
-                warnings.Add($"{label} の Sources に {source.name} を手で設定してください。");
-                Debug.LogWarning($"[CamDrone Probe] {label} の Sources 自動設定に失敗: {reflectionDetail}");
                 DumpSerializedTree(so, label);
             }
         }
@@ -703,6 +714,36 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             }
 
             return false;
+        }
+
+        /// <summary>Sources の先頭に狙いの Transform が実際に入っているか。</summary>
+        private static bool SourceIsSet(Component constraint, Transform source)
+        {
+            using (var so = new SerializedObject(constraint))
+            {
+                var root = FindProp(so, "Sources", "sources", "m_Sources");
+                if (root == null) return false;
+
+                SerializedProperty slot;
+                var array = FindArrayWithin(root);
+                if (array != null)
+                {
+                    if (array.arraySize < 1) return false;
+                    slot = array.GetArrayElementAtIndex(0);
+                }
+                else
+                {
+                    slot = root.FindPropertyRelative("source0")
+                           ?? root.FindPropertyRelative("Source0")
+                           ?? root.FindPropertyRelative("_source0");
+                }
+
+                if (slot == null) return false;
+
+                var transform = FindRelative(slot, SerializedPropertyType.ObjectReference,
+                    "SourceTransform", "sourceTransform", "transform");
+                return transform != null && transform.objectReferenceValue == source;
+            }
         }
 
         private static bool TrySetSourceBySerializedProperty(SerializedObject so, Transform source)
