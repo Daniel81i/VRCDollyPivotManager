@@ -489,6 +489,14 @@ class SlotState:
             return None
         return all(values)
 
+    def hit_counts(self, axis: str, now: float) -> Tuple[int, int]:
+        """区間内で当たった件数と全件数。区間が空なら持っている全部で数える。"""
+        values = [v for (t, v) in self.hits[axis]
+                  if now - SAMPLE_WINDOW_START <= t <= now - SAMPLE_WINDOW_END]
+        if not values:
+            values = [v for (_, v) in self.hits[axis]]
+        return sum(1 for v in values if v), len(values)
+
     def spread(self, axis: str, now: float) -> Optional[float]:
         values = [v for (t, v) in self.samples[axis]
                   if now - SAMPLE_WINDOW_START <= t <= now - SAMPLE_WINDOW_END]
@@ -758,14 +766,16 @@ def collect_inputs(slot: SlotState, now: float, config: Config, log: Logger,
                 stale_age = now - stamp
                 hit = slot.latest_hit(axis)
 
-        # 当たっていないレイの距離に意味は無い。VRChat は外れたとき 0 を
-        # 入れてくるので、そのまま三辺測量に渡すと基線から決まる定数
-        # （プレイヤーの足元付近）が中心として出てしまい、いかにも
-        # 計算できたように見えるパスが生成される。
-        if hit is False:
+        # 外れたときの距離は 0 で届く。そのまま三辺測量に渡すと基線から
+        # 決まる定数が中心として出てしまうため、使わない。
+        #
+        # ただし「1件でも外れたら不可」は厳しすぎる。動いている間は
+        # ときどき外れるので、一度も当たっていないときだけ捨てる。
+        hit_ok, hit_total = slot.hit_counts(axis, now)
+        if hit_total > 0 and hit_ok == 0:
             distances[axis] = None
             inputs.report.append(
-                f"  Probe{axis}      レイが当たっていません（距離は無効）")
+                f"  Probe{axis}      レイが一度も当たっていません（{hit_total} 件すべて外れ）")
             continue
 
         if distances[axis] is None:
@@ -779,8 +789,8 @@ def collect_inputs(slot: SlotState, now: float, config: Config, log: Logger,
             continue
 
         marks = []
-        if hit is False:
-            marks.append("当たっていない区間あり")
+        if hit_total > 0 and hit_ok < hit_total:
+            marks.append(f"当たり {hit_ok}/{hit_total} 件")
         if spread is not None and spread > 0.05:
             marks.append(f"ばらつき {spread*1000:.0f}mm（静止していない可能性）")
 
