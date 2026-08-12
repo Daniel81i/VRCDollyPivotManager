@@ -909,18 +909,21 @@ def establish_transport(config: Config, log: Logger,
                         disp: Any) -> Tuple[str, Optional[Any], Optional[Any], int]:
     """設定された優先順で接続方法を確立し、待ち受けまで済ませる。
 
-    どちらの方式でも receive_port で待ち受ける。
+    待ち受けるポートは方式によって別にする。
 
-    一度 oscquery のときだけ空きポートを取る作りにしたが、それでは
-    **何も届かなくなった**。OSCQuery で名乗れば VRChat が見つけて送って
-    くれるという前提が、実際には成り立っていない。加えて UDP リピーターで
-    配っている場合、配布先は設定した番号なので、別の番号で待つと
-    そちらからも来ない。番号は設定値で固定する。
+    - **oscquery** — 番号は mDNS で VRChat へ伝えるので、設定値である必要が
+      無い。空きポートを取る。UDP リピーターのような「特定の番号へ配る」
+      仕組みと番号が重ならないため、同じ配信を二重に受け取らずに済む。
+    - **osc** — 番号を伝える手段が無いので、設定値をそのまま使う。
 
-    その代償として、リピーター経由と VRChat からの直接送信が重なると
-    同じ値を二重に受け取り得る。Confirm は立ち上がりで検出しているが、
-    2系統がずれて届くと立ち上がりが2回成立する。実際に二重生成が
-    起きるようなら、リピーターの配布先かこちらの番号をずらして避ける。
+    両者を同じ番号にすると、リピーター経由の配信と VRChat からの直接送信が
+    重なる。Confirm は立ち上がりで検出しているが、2系統がずれて届くと
+    立ち上がりが2回成立し、1回の押下で2本生成されてしまう。
+
+    一度これで何も届かなくなり設定値へ戻したが、原因は番号ではなく
+    mDNS で LAN の IP を広告していたことだった（oscquery.local_ip 参照）。
+    VRChat は localhost からしか受け付けないため、どの番号で待っていても
+    届かなかった。そちらを直したので、この分け方が本来の形。
     """
     order = [config.connection]
     if config.fallback:
@@ -942,9 +945,9 @@ def establish_transport(config: Config, log: Logger,
             continue
 
         try:
-            server, port = bind_server(config, config.receive_port, disp)
+            server, port = bind_server(config, 0, disp)
         except OSError as exc:
-            log.error(f"ポート {config.receive_port} で待ち受けられません: {exc}")
+            log.error(f"待ち受けポートを確保できません: {exc}")
             continue
 
         service = oscquery.Service(oscquery.SERVICE_NAME, port)
