@@ -233,6 +233,34 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 }
             }
 
+            // 設定「した」ではなく「入っている」を数えて残す。
+            // ここが 0 のまま気付かないと、実機でレイが1本も当たらない。
+            var sourceTotal = 0;
+            var sourceOk = 0;
+            foreach (var slot in slots)
+            {
+                var rig = slot.Find(RigChildName);
+                if (rig == null) continue;
+
+                sourceTotal++;
+                var rotation = rig.GetComponent<VRCRotationConstraint>();
+                if (rotation != null && SourceIsSet(rotation, probeRoot)) sourceOk++;
+
+                foreach (var axis in ProbeAxes)
+                {
+                    var probe = rig.Find("Probe" + axis.Name);
+                    if (probe == null) continue;
+
+                    sourceTotal++;
+                    var aim = probe.GetComponent<VRCAimConstraint>();
+                    if (aim != null && SourceIsSet(aim, aimTarget)) sourceOk++;
+                }
+            }
+
+            if (sourceOk < sourceTotal)
+                warnings.Add($"Constraint の Source が {sourceTotal - sourceOk} 件設定できていません。"
+                             + "上の警告と Console を確認してください。");
+
             Undo.CollapseUndoOperations(undoGroup);
             EditorUtility.SetDirty(avatar);
 
@@ -241,6 +269,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 $"対象: {string.Join(", ", numbers.Select(n => "Object_" + n))}\n\n" +
                 $"パラメータ: {ParamBase(numbers[0], "A")} 形式で _Hit / _Ratio / _Distance（全て Local Only）\n" +
                 $"レイ最大距離: {MaxDistance} m（PC 側が読むのは _Distance。_Ratio × {MaxDistance} が実距離）\n" +
+                $"Constraint の Source: {sourceOk}/{sourceTotal} 設定済み\n" +
                 $"基線長: {Baseline} m（PC側の計算と揃えること）\n\n" +
                 "シーンを保存してからアバターをアップロードしてください。";
 

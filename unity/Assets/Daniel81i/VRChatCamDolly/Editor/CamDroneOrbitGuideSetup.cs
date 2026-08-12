@@ -346,6 +346,22 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             var rootMenu = BuildRootMenu(subMenus, singleSlot);
             ConfigureMenuInstaller(menuRoot.gameObject, rootMenu);
 
+            // YawFollow の Source が入っているかを数えて残す
+            var yawTotal = 0;
+            var yawOk = 0;
+            foreach (var slot in slots)
+            {
+                var follow = slot.Find($"{GuideRootName}/{YawFollowName}");
+                if (follow == null) continue;
+
+                yawTotal++;
+                var constraint = follow.GetComponent<VRCRotationConstraint>();
+                if (constraint != null && SourceIsSet(constraint, yawSource)) yawOk++;
+            }
+
+            if (yawOk < yawTotal)
+                notes.Add($"YawFollow の Source が {yawTotal - yawOk} 件設定できていません。");
+
             Undo.CollapseUndoOperations(undoGroup);
             AssetDatabase.SaveAssets();
             EditorUtility.SetDirty(avatar);
@@ -363,6 +379,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 "  Center Height / Ring Height / Ring -> Center / Radius /\n" +
                 "  Tilt(Angle, Low Point) / Path(Points, 右回り, ランダム) /\n" +
                 "  Guide / Confirm\n\n" +
+                $"YawFollow の Source: {yawOk}/{yawTotal} 設定済み\n" +
                 "ガイドは IsLocal で自分にだけ見えるようにしています。";
 
             if (notes.Count > 0) message += "\n\n[メモ]\n" + string.Join("\n", notes);
