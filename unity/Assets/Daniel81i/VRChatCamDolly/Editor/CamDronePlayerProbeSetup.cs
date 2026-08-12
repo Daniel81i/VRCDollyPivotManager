@@ -240,7 +240,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 $"{slots.Count} 点 × 3本 = {slots.Count * ProbeAxes.Length} 本のレイを設定しました。\n" +
                 $"対象: {string.Join(", ", numbers.Select(n => "Object_" + n))}\n\n" +
                 $"パラメータ: {ParamBase(numbers[0], "A")} 形式で _Hit / _Ratio / _Distance（全て Local Only）\n" +
-                $"レイ最大距離: {MaxDistance} m（_Ratio × {MaxDistance} が実距離）\n" +
+                $"レイ最大距離: {MaxDistance} m（PC 側が読むのは _Distance。_Ratio × {MaxDistance} が実距離）\n" +
                 $"基線長: {Baseline} m（PC側の計算と揃えること）\n\n" +
                 "シーンを保存してからアバターをアップロードしてください。";
 
@@ -250,6 +250,9 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 Debug.LogWarning("[CamDrone Probe] " + string.Join(" / ", warnings));
             }
 
+            // ダイアログは閉じると消える。あとから見返せるよう Console にも残す
+            Debug.Log($"[CamDrone Probe]
+{message}", avatar);
             EditorUtility.DisplayDialog("CamDrone Probe", message, "OK");
         }
 

@@ -367,6 +367,9 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
 
             if (notes.Count > 0) message += "\n\n[メモ]\n" + string.Join("\n", notes);
 
+            // ダイアログは閉じると消える。あとから見返せるよう Console にも残す
+            Debug.Log($"[CamDrone Orbit]
+{message}", avatar);
             EditorUtility.DisplayDialog("CamDrone Orbit", message, "OK");
         }
 
