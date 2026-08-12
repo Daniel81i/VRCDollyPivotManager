@@ -814,8 +814,9 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             var wrote = false;
             wrote |= SetVector3(so, Vector3.zero, null, "RotationAtRest", "AtRestRotation", "m_RotationAtRest");
             wrote |= SetVector3(so, Vector3.zero, null, "RotationOffset", "OffsetRotation", "m_RotationOffset");
-            wrote |= SetVector3(so, Vector3.zero, null, "PositionAtRest", "AtRestPosition", "m_PositionAtRest");
-            wrote |= SetVector3(so, Vector3.zero, null, "PositionOffset", "OffsetPosition", "m_PositionOffset");
+            // Position 系は書かない。この2つは回転しか動かさないので値は
+            // 使われないが、触ると ProbeB の localPosition(1.5,0,0) のような
+            // 意味のある配置と紛らわしくなる。
             return wrote;
         }
 

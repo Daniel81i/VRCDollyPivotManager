@@ -96,9 +96,7 @@ def add(tar: tarfile.TarFile, name: str, payload: bytes) -> None:
     info = tarfile.TarInfo(name)
     info.size = len(payload)
     info.mtime = FIXED_MTIME
-    info.mode = 0o700
-    info.uname = "user"
-    info.gname = "user"
+    info.mode = 0o777      # Unity が書き出すものに合わせる
     tar.addfile(info, io.BytesIO(payload))
 
 
