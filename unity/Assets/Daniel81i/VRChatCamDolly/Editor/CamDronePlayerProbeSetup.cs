@@ -28,7 +28,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
     /// </summary>
     internal static class CamDronePlayerProbeSetup
     {
-        private const string MenuPath = "Tools/CamDrone/Setup Player Probe (Plan A)";
+        private const string MenuPath = "Tools/CamDrone/Setup Player Probe (1-5 All)";
         private const string SingleMenuPath =
             "Tools/CamDrone/Setup Player Probe (Object_5 Only)";
         private const string RemoveMenuPath = "Tools/CamDrone/Remove Player Probe";
@@ -122,7 +122,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         [MenuItem(MenuPath, true)]
         private static bool ValidateRun() => FindAvatar() != null;
 
-        [MenuItem(MenuPath)]
+        [MenuItem(MenuPath, false, 3)]
         private static void Run() => Run(false);
 
         [MenuItem(SingleMenuPath, true)]
@@ -132,7 +132,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         /// Object_5 だけに測距レイを付ける。同時に使えるパスは1本なので、
         /// 5点ぶんのレイ（15本、Poor の上限ちょうど）は要らないという判断。
         /// </summary>
-        [MenuItem(SingleMenuPath)]
+        [MenuItem(SingleMenuPath, false, 1)]
         private static void RunSingle() => Run(true);
 
         private static void Run(bool singleSlot)
@@ -287,7 +287,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         [MenuItem(RemoveMenuPath, true)]
         private static bool ValidateRemove() => FindAvatar() != null;
 
-        [MenuItem(RemoveMenuPath)]
+        [MenuItem(RemoveMenuPath, false, 21)]
         private static void Remove()
         {
             var avatar = FindAvatar();

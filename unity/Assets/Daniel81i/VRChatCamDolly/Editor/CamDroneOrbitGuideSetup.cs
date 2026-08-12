@@ -40,7 +40,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
     /// </summary>
     internal static class CamDroneOrbitGuideSetup
     {
-        private const string MenuPath = "Tools/CamDrone/Setup Orbit Guide";
+        private const string MenuPath = "Tools/CamDrone/Setup Orbit Guide (1-5 All)";
         private const string SingleMenuPath =
             "Tools/CamDrone/Setup Orbit Guide (Object_5 Only)";
         private const string RemoveMenuPath = "Tools/CamDrone/Remove Orbit Guide";
@@ -220,7 +220,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         [MenuItem(MenuPath, true)]
         private static bool ValidateRun() => FindAvatar() != null;
 
-        [MenuItem(MenuPath)]
+        [MenuItem(MenuPath, false, 4)]
         private static void Run() => Run(false);
 
         [MenuItem(SingleMenuPath, true)]
@@ -230,7 +230,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         /// Object_5 だけにガイドとメニューを付ける。5組ぶんの
         /// パーティクル・メッシュ・パラメータを持たずに済む。
         /// </summary>
-        [MenuItem(SingleMenuPath)]
+        [MenuItem(SingleMenuPath, false, 2)]
         private static void RunSingle() => Run(true);
 
         private static void Run(bool singleSlot)
@@ -393,7 +393,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         [MenuItem(RemoveMenuPath, true)]
         private static bool ValidateRemove() => FindAvatar() != null;
 
-        [MenuItem(RemoveMenuPath)]
+        [MenuItem(RemoveMenuPath, false, 20)]
         private static void Remove()
         {
             var avatar = FindAvatar();
