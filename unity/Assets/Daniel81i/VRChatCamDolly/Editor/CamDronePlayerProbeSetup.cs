@@ -251,8 +251,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             }
 
             // ダイアログは閉じると消える。あとから見返せるよう Console にも残す
-            Debug.Log($"[CamDrone Probe]
-{message}", avatar);
+            Debug.Log($"[CamDrone Probe] {message}", avatar);
             EditorUtility.DisplayDialog("CamDrone Probe", message, "OK");
         }
 
