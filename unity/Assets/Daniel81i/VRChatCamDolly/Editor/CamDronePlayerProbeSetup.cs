@@ -768,19 +768,9 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 var root = FindProp(so, "Sources", "sources", "m_Sources");
                 if (root == null) return false;
 
-                SerializedProperty slot;
-                var array = FindArrayWithin(root);
-                if (array != null)
-                {
-                    if (array.arraySize < 1) return false;
-                    slot = array.GetArrayElementAtIndex(0);
-                }
-                else
-                {
-                    slot = root.FindPropertyRelative("source0")
-                           ?? root.FindPropertyRelative("Source0")
-                           ?? root.FindPropertyRelative("_source0");
-                }
+                // VRChat が読むのは source0。overflowList は17件目以降の入れ物で、
+                // そちらだけ埋めても Source は無いものとして扱われる。
+                var slot = FirstSourceSlot(root);
 
                 if (slot == null) return false;
 
@@ -808,21 +798,38 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             var root = FindProp(so, "Sources", "sources", "m_Sources");
             if (root == null) return false;
 
-            var array = FindArrayWithin(root);
-            if (array != null)
+            var slot = FirstSourceSlot(root);
+            if (slot == null)
             {
-                array.arraySize = 1;
-                return AssignSourceSlot(array.GetArrayElementAtIndex(0), source);
+                // 平坦な source0 が無い型なら、配列として扱う
+                var fallback = FindArrayWithin(root);
+                if (fallback == null) return false;
+                fallback.arraySize = 1;
+                return AssignSourceSlot(fallback.GetArrayElementAtIndex(0), source);
             }
 
-            // source0 〜 source15 の平坦な構成
-            var slot = root.FindPropertyRelative("source0")
-                       ?? root.FindPropertyRelative("Source0")
-                       ?? root.FindPropertyRelative("_source0");
-            if (slot == null || !AssignSourceSlot(slot, source)) return false;
+            if (!AssignSourceSlot(slot, source)) return false;
 
             SetSourceCount(root, 1);
+
+            // 保存された状態に合わせ、overflowList にも同じ1件を入れておく。
+            // インスペクタで設定したものはこの形になっている。
+            var overflow = FindArrayWithin(root);
+            if (overflow != null)
+            {
+                overflow.arraySize = 1;
+                AssignSourceSlot(overflow.GetArrayElementAtIndex(0), source);
+            }
+
             return true;
+        }
+
+        /// <summary>Sources の先頭。source0 という平坦なフィールドを優先する。</summary>
+        private static SerializedProperty FirstSourceSlot(SerializedProperty root)
+        {
+            return root.FindPropertyRelative("source0")
+                   ?? root.FindPropertyRelative("Source0")
+                   ?? root.FindPropertyRelative("_source0");
         }
 
         private static bool AssignSourceSlot(SerializedProperty slot, Transform source)
@@ -845,7 +852,9 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             while (iterator.NextVisible(true) && !SerializedProperty.EqualContents(iterator, end))
             {
                 if (iterator.propertyType != SerializedPropertyType.Integer) continue;
-                if (iterator.name.IndexOf("count", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                var lower = iterator.name.ToLowerInvariant();
+                if (lower.IndexOf("count", StringComparison.Ordinal) < 0
+                    && lower.IndexOf("length", StringComparison.Ordinal) < 0) continue;
                 iterator.intValue = count;
                 return;
             }

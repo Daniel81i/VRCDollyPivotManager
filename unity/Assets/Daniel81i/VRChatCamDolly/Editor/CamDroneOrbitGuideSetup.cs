@@ -614,6 +614,12 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                        ?? so.FindProperty("m_Sources");
             if (root == null) return null;
 
+            // VRChat が読むのは source0。overflowList は17件目以降の入れ物で、
+            // そちらだけ埋めても Source は無いものとして扱われる。
+            var flat = root.FindPropertyRelative("source0")
+                       ?? root.FindPropertyRelative("Source0");
+            if (flat != null) return flat;
+
             var array = root.isArray ? root.Copy() : null;
             if (array == null)
             {
@@ -638,6 +644,25 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             }
 
             return array.GetArrayElementAtIndex(0);
+        }
+
+        /// <summary>Sources の件数（totalLength）を書く。</summary>
+        private static void SetSourceCount(SerializedObject so, int count)
+        {
+            var root = so.FindProperty("Sources") ?? so.FindProperty("sources");
+            if (root == null) return;
+
+            var end = root.GetEndProperty();
+            var iterator = root.Copy();
+            while (iterator.NextVisible(true)
+                   && !SerializedProperty.EqualContents(iterator, end))
+            {
+                if (iterator.propertyType != SerializedPropertyType.Integer) continue;
+                var lower = iterator.name.ToLowerInvariant();
+                if (!lower.Contains("count") && !lower.Contains("length")) continue;
+                iterator.intValue = count;
+                return;
+            }
         }
 
         private static SerializedProperty FindSourceTransform(SerializedProperty slot)
@@ -675,6 +700,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 if (weight != null && weight.propertyType == SerializedPropertyType.Float)
                     weight.floatValue = 1f;
 
+                SetSourceCount(so, 1);
                 so.ApplyModifiedPropertiesWithoutUndo();
                 return true;
             }
