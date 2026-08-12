@@ -776,8 +776,26 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
 
                 var transform = FindRelative(slot, SerializedPropertyType.ObjectReference,
                     "SourceTransform", "sourceTransform", "transform");
-                return transform != null && transform.objectReferenceValue == source;
+                if (transform == null || transform.objectReferenceValue != source) return false;
+
+                // 件数も見る。ここが 0 だと source0 に入っていても
+                // VRChat からは Source 無しに見える。リフレクションは
+                // source0 を書いても件数を更新しないことがある。
+                return SourceCount(root) >= 1;
             }
+        }
+
+        /// <summary>Sources の件数。読めなければ -1。</summary>
+        private static int SourceCount(SerializedProperty root)
+        {
+            foreach (var name in new[] { "totalLength", "TotalLength", "sourceCount", "SourceCount", "Count" })
+            {
+                var property = root.FindPropertyRelative(name);
+                if (property != null && property.propertyType == SerializedPropertyType.Integer)
+                    return property.intValue;
+            }
+
+            return -1;
         }
 
         /// <summary>
