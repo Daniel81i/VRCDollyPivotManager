@@ -243,7 +243,11 @@ DEFAULT_MENU_NORMALIZED = {
 # Confirm 時に使う区間。押す動作で身体が動くので、押した瞬間ではなく少し前を見る
 SAMPLE_WINDOW_START = 1.2   # 秒前から
 SAMPLE_WINDOW_END = 0.3     # 秒前まで
-BUFFER_SECONDS = 5.0
+# 測距値の保持件数。時間ではなく件数で切る。
+# VRChat は値が変化したときにしか送らないので、静止すると補充が来ない。
+# 時間で捨てると、じっとしているだけで印の位置を見失う。
+# 届いた分だけ溜まるので、500 件あれば動き続けても数十秒ぶんになる。
+SAMPLES_KEPT = 500
 
 # 最後に受信してからこの秒数を過ぎたら「待機中」表示に戻す
 ACTIVE_TIMEOUT = 5.0
@@ -419,15 +423,10 @@ class SlotState:
     """スロット1つ分の受信状態。測距値だけ時刻付きで溜める。"""
 
     def __init__(self) -> None:
-        self.samples: Dict[str, Deque[Tuple[float, float]]] = {a: deque() for a in AXES}
-        self.hits: Dict[str, Deque[Tuple[float, bool]]] = {a: deque() for a in AXES}
-        # 直近の値を捨てずに1つだけ残す。VRChat は値が変化したときしか
-        # 送らないので、動きが止まると補充が来ない。バッファは古い値を
-        # BUFFER_SECONDS で落とすため、静止していると空になってしまう。
-        # 補充が来ないのは「変わっていない」ということなので、
-        # 最後の値はその時点でも有効とみなせる。
-        self.last: Dict[str, Optional[Tuple[float, float]]] = {a: None for a in AXES}
-        self.last_hit: Dict[str, Optional[bool]] = {a: None for a in AXES}
+        self.samples: Dict[str, Deque[Tuple[float, float]]] = {
+            a: deque(maxlen=SAMPLES_KEPT) for a in AXES}
+        self.hits: Dict[str, Deque[Tuple[float, bool]]] = {
+            a: deque(maxlen=SAMPLES_KEPT) for a in AXES}
         # 起動時に初期値で埋めておく。一度も操作されていない項目は
         # VRChat から送られてこないため、これが無いと計算が成立しない。
         self.menu: Dict[str, float] = dict(DEFAULT_MENU_NORMALIZED)
@@ -436,34 +435,32 @@ class SlotState:
         self.confirm = False
 
     def push_distance(self, axis: str, value: float, now: float) -> None:
-        buffer = self.samples[axis]
-        buffer.append((now, value))
-        self._trim(buffer, now)
-        self.last[axis] = (now, value)
+        self.samples[axis].append((now, value))
 
     def push_hit(self, axis: str, value: bool, now: float) -> None:
-        buffer = self.hits[axis]
-        buffer.append((now, value))
-        self._trim(buffer, now)
-        self.last_hit[axis] = value
-
-    @staticmethod
-    def _trim(buffer: Deque[Tuple[float, Any]], now: float) -> None:
-        while buffer and now - buffer[0][0] > BUFFER_SECONDS:
-            buffer.popleft()
+        self.hits[axis].append((now, value))
 
     def latest(self, axis: str) -> Optional[float]:
         """最後に受け取った値。Confirm を押した時点の状態にあたる。"""
         buffer = self.samples[axis]
         return buffer[-1][1] if buffer else None
 
+    def latest_sample(self, axis: str) -> Optional[Tuple[float, float]]:
+        """最後に受け取った値と、その時刻。"""
+        buffer = self.samples[axis]
+        return buffer[-1] if buffer else None
+
+    def latest_hit(self, axis: str) -> Optional[bool]:
+        buffer = self.hits[axis]
+        return buffer[-1][1] if buffer else None
+
     def window_median(self, axis: str, now: float) -> Optional[float]:
         values = [v for (t, v) in self.samples[axis]
                   if now - SAMPLE_WINDOW_START <= t <= now - SAMPLE_WINDOW_END]
         if not values:
-            # 区間に何も無ければ、あるだけの直近値で妥協する
-            values = [v for (_, v) in self.samples[axis]]
-        if not values:
+            # 区間に何も無ければ諦める。ここで全件の中央値へ落ちると、
+            # 動いていた頃の古い値まで混ざった距離になる。
+            # 呼び出し側が最後の1件で代用する。
             return None
         values.sort()
         return values[len(values) // 2]
@@ -490,11 +487,6 @@ class SlotState:
         inside = sum(1 for (t, _) in self.samples[axis]
                      if now - SAMPLE_WINDOW_START <= t <= now - SAMPLE_WINDOW_END)
         return inside, total
-
-    def prune(self, now: float) -> None:
-        """受信が途絶えたまま古い値が残り続けるのを防ぐ。"""
-        for buffer in list(self.samples.values()) + list(self.hits.values()):
-            self._trim(buffer, now)
 
 
 class State:
@@ -731,7 +723,6 @@ def collect_inputs(slot: SlotState, now: float, config: Config, log: Logger,
     Confirm を押した時点の状態にあたり、押す動作で身体が動いた分が入る。
     """
     inputs = OrbitInput()
-    slot.prune(now)
 
     inputs.report.append("[受信状況]")
 
@@ -744,11 +735,13 @@ def collect_inputs(slot: SlotState, now: float, config: Config, log: Logger,
         spread = slot.spread(axis, now)
 
         stale_age: Optional[float] = None
-        if distances[axis] is None and slot.last[axis] is not None:
-            stamp, value = slot.last[axis]
-            distances[axis] = value
-            stale_age = now - stamp
-            hit = slot.last_hit[axis]
+        if distances[axis] is None:
+            recent = slot.latest_sample(axis)
+            if recent is not None:
+                stamp, value = recent
+                distances[axis] = value
+                stale_age = now - stamp
+                hit = slot.latest_hit(axis)
 
         if distances[axis] is None:
             inputs.report.append(f"  Probe{axis}      未受信")
@@ -763,8 +756,6 @@ def collect_inputs(slot: SlotState, now: float, config: Config, log: Logger,
         marks = []
         if hit is False:
             marks.append("当たっていない区間あり")
-        if inside == 0:
-            marks.append("区間内にデータ無し→直近値で代用")
         if spread is not None and spread > 0.05:
             marks.append(f"ばらつき {spread*1000:.0f}mm（静止していない可能性）")
 
@@ -1161,9 +1152,8 @@ def dump_all_slots(state: State, config: Config, log: Logger) -> None:
     with state.lock:
         for slot_number in range(1, SLOT_COUNT + 1):
             slot = state.slots[slot_number]
-            slot.prune(now)
 
-            values = {a: slot.window_median(a, now) for a in AXES}
+            values = {a: slot.window_median(a, now) or slot.latest(a) for a in AXES}
             if any(values[a] is None for a in AXES):
                 got = [a for a in AXES if values[a] is not None]
                 log.info(f"  Obj{slot_number}: 未受信"
