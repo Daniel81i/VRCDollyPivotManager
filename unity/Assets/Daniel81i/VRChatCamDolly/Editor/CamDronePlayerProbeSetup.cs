@@ -845,19 +845,39 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             return true;
         }
 
-        private static void SetSourceCount(SerializedProperty root, int count)
+        /// <summary>
+        /// Sources の件数を書く。ここが 0 のままだと、source0 に入れても
+        /// VRChat からは Source 無しに見える。
+        ///
+        /// 走査では見つからない。件数のフィールドはインスペクタに出さないため
+        /// NextVisible が飛ばしてしまう。名前で直接引く。
+        /// </summary>
+        private static bool SetSourceCount(SerializedProperty root, int count)
         {
+            foreach (var name in new[] { "totalLength", "TotalLength", "sourceCount", "SourceCount", "Count" })
+            {
+                var property = root.FindPropertyRelative(name);
+                if (property == null || property.propertyType != SerializedPropertyType.Integer)
+                    continue;
+                property.intValue = count;
+                return true;
+            }
+
+            // 名前が変わっていた場合の保険。Next は非表示のものもたどる。
             var end = root.GetEndProperty();
             var iterator = root.Copy();
-            while (iterator.NextVisible(true) && !SerializedProperty.EqualContents(iterator, end))
+            while (iterator.Next(true) && !SerializedProperty.EqualContents(iterator, end))
             {
                 if (iterator.propertyType != SerializedPropertyType.Integer) continue;
                 var lower = iterator.name.ToLowerInvariant();
                 if (lower.IndexOf("count", StringComparison.Ordinal) < 0
                     && lower.IndexOf("length", StringComparison.Ordinal) < 0) continue;
+                if (lower == "size") continue;   // 配列の要素数
                 iterator.intValue = count;
-                return;
+                return true;
             }
+
+            return false;
         }
 
         private static void DumpSerializedTree(SerializedObject so, string label)

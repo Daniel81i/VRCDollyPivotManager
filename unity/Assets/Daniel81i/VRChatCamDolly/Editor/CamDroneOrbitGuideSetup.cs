@@ -647,19 +647,34 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         }
 
         /// <summary>Sources の件数（totalLength）を書く。</summary>
+        /// <summary>
+        /// Sources の件数を書く。ここが 0 のままだと、source0 に入れても
+        /// VRChat からは Source 無しに見える。件数のフィールドはインスペクタに
+        /// 出さないため、走査（NextVisible）では見つからない。名前で直接引く。
+        /// </summary>
         private static void SetSourceCount(SerializedObject so, int count)
         {
             var root = so.FindProperty("Sources") ?? so.FindProperty("sources");
             if (root == null) return;
 
+            foreach (var name in new[] { "totalLength", "TotalLength", "sourceCount", "SourceCount", "Count" })
+            {
+                var property = root.FindPropertyRelative(name);
+                if (property == null || property.propertyType != SerializedPropertyType.Integer)
+                    continue;
+                property.intValue = count;
+                return;
+            }
+
             var end = root.GetEndProperty();
             var iterator = root.Copy();
-            while (iterator.NextVisible(true)
+            while (iterator.Next(true)
                    && !SerializedProperty.EqualContents(iterator, end))
             {
                 if (iterator.propertyType != SerializedPropertyType.Integer) continue;
                 var lower = iterator.name.ToLowerInvariant();
                 if (!lower.Contains("count") && !lower.Contains("length")) continue;
+                if (lower == "size") continue;
                 iterator.intValue = count;
                 return;
             }
