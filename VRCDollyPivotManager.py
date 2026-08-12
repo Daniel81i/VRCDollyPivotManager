@@ -421,6 +421,13 @@ class SlotState:
     def __init__(self) -> None:
         self.samples: Dict[str, Deque[Tuple[float, float]]] = {a: deque() for a in AXES}
         self.hits: Dict[str, Deque[Tuple[float, bool]]] = {a: deque() for a in AXES}
+        # 直近の値を捨てずに1つだけ残す。VRChat は値が変化したときしか
+        # 送らないので、動きが止まると補充が来ない。バッファは古い値を
+        # BUFFER_SECONDS で落とすため、静止していると空になってしまう。
+        # 補充が来ないのは「変わっていない」ということなので、
+        # 最後の値はその時点でも有効とみなせる。
+        self.last: Dict[str, Optional[Tuple[float, float]]] = {a: None for a in AXES}
+        self.last_hit: Dict[str, Optional[bool]] = {a: None for a in AXES}
         # 起動時に初期値で埋めておく。一度も操作されていない項目は
         # VRChat から送られてこないため、これが無いと計算が成立しない。
         self.menu: Dict[str, float] = dict(DEFAULT_MENU_NORMALIZED)
@@ -432,11 +439,13 @@ class SlotState:
         buffer = self.samples[axis]
         buffer.append((now, value))
         self._trim(buffer, now)
+        self.last[axis] = (now, value)
 
     def push_hit(self, axis: str, value: bool, now: float) -> None:
         buffer = self.hits[axis]
         buffer.append((now, value))
         self._trim(buffer, now)
+        self.last_hit[axis] = value
 
     @staticmethod
     def _trim(buffer: Deque[Tuple[float, Any]], now: float) -> None:
@@ -734,8 +743,21 @@ def collect_inputs(slot: SlotState, now: float, config: Config, log: Logger,
         inside, total = slot.counts(axis, now)
         spread = slot.spread(axis, now)
 
+        stale_age: Optional[float] = None
+        if distances[axis] is None and slot.last[axis] is not None:
+            stamp, value = slot.last[axis]
+            distances[axis] = value
+            stale_age = now - stamp
+            hit = slot.last_hit[axis]
+
         if distances[axis] is None:
             inputs.report.append(f"  Probe{axis}      未受信")
+            continue
+
+        if stale_age is not None:
+            inputs.report.append(
+                f"  Probe{axis}      距離 {distances[axis]:.4f} m  Hit {hit}  "
+                f"※ {stale_age:.0f} 秒前の最終値（動きが無いため補充されていない）")
             continue
 
         marks = []
