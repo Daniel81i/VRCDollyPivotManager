@@ -575,16 +575,21 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             // 本体には反映されないが、呼び出し自体は成功を返す。
             // 以前はその戻り値を信じて打ち切っていたため、Sources が空のまま
             // 警告も出ず、実機でレイが1本も当たらなかった。
-            TrySetSourceByReflection(constraint, source, out var reflectionDetail);
-
-            if (!SourceIsSet(constraint, source))
+            // 空かどうかではなく、毎回書き直す。既に入っていても中身が
+            // 正しいとは限らない。実際、別アバターの ProbeAimTarget を
+            // 指したまま「設定済み」と判定され、アップロード後に参照が
+            // 消えてレイが当たらなくなっていた。
+            using (var so = new SerializedObject(constraint))
             {
-                using (var so = new SerializedObject(constraint))
-                {
-                    if (TrySetSourceBySerializedProperty(so, source))
-                        so.ApplyModifiedPropertiesWithoutUndo();
-                }
+                if (TrySetSourceBySerializedProperty(so, source))
+                    so.ApplyModifiedPropertiesWithoutUndo();
             }
+
+            // それでも入らない型のために、リフレクションも試す
+            if (!SourceIsSet(constraint, source))
+                TrySetSourceByReflection(constraint, source, out _);
+
+            var reflectionDetail = "SerializedProperty / リフレクションとも失敗";
 
             if (SourceIsSet(constraint, source)) return;
 

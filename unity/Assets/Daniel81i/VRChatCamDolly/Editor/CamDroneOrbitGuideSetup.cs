@@ -586,10 +586,12 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             // 構造体ベースのリストで、リフレクションで取るとコピーが返る。
             // 書き換えても本体に反映されないまま成功を返すため、以前は
             // 空のまま素通りしていた。
-            TrySetSourceByReflection(constraint, yawSource);
+            // 空かどうかではなく、毎回書き直す。既に入っていても別アバターの
+            // オブジェクトを指している場合があり、それでは追従先にならない。
+            TrySetSourceBySerializedProperty(constraint, yawSource);
 
             if (!SourceIsSet(constraint, yawSource))
-                TrySetSourceBySerializedProperty(constraint, yawSource);
+                TrySetSourceByReflection(constraint, yawSource);
 
             if (!SourceIsSet(constraint, yawSource))
             {
