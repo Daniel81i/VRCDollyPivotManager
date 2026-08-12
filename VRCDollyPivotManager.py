@@ -608,7 +608,7 @@ class OrbitInput:
         self.defaulted: List[str] = []  # 既定値で埋めた項目
         # 中心が求まらなかったときに、欠けていた軸を入れる。
         # 空でなければ生成そのものを中止する。
-        self.center_missing: List[str] = []
+        self.center_is_self = False
 
 
 def tilt_mark_bearing(tilt_dir: float) -> float:
@@ -793,11 +793,17 @@ def collect_inputs(slot: SlotState, now: float, config: Config, log: Logger,
         inputs.center_x, inputs.center_z = solve_center(
             distances["A"], distances["B"], distances["C"], config.rho, PROBE_BASELINE)
     else:
-        # 中心が求まらない。(0,0) は「自分の足元」であって推定値ではないので、
-        # これで生成すると意味のないパスを VRChat へ読み込ませることになる。
+        # 測距値が無い、またはレイが当たっていない。印を置いていないか、
+        # 置いた印を測れていない。どちらも「自分の周りを回る」で意味が通るので、
+        # 中止せず自分を中心にする。
+        #
+        # 距離 0 をそのまま三辺測量へ流してはいけない。0/0/0 は解けてしまい、
+        # 基線から決まる (-0.75, -0.75) という、自分でも印でもない点が出る。
         missing = [a for a in AXES if distances[a] is None]
-        inputs.center_missing = missing
-        inputs.report.append(f"  ※ 測距値({','.join(missing)})が無いため中心を求められません")
+        inputs.center_x, inputs.center_z = 0.0, 0.0
+        inputs.center_is_self = True
+        inputs.report.append(
+            f"  ※ 測距値({','.join(missing)})が無いため、自分を中心にします")
 
     menu = slot.menu
 
@@ -1237,16 +1243,6 @@ def generate(slot_number: int, state: State, config: Config, log: Logger,
 
     for line in inputs.report:
         log.info(line)
-
-    # 中心が求まらないまま進むと、自分の足元を中心にした無意味なパスを
-    # VRChat へ読み込ませてしまう。ここで止める。
-    if inputs.center_missing:
-        log.warn(f"測距値({','.join(inputs.center_missing)})が使えないため中止しました。"
-                 "生成も読み込みもしていません")
-        log.warn("  上の[受信状況]を見てください。"
-                 "「当たっていません」ならレイの設定、「未受信」なら受信経路の問題です")
-        log.info("=" * 24 + " 中止 " + "=" * 24)
-        return None
 
     if inputs.defaulted:
         log.info("初期値のまま使った項目: " + ", ".join(inputs.defaulted)
