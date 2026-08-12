@@ -351,7 +351,8 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             var yawOk = 0;
             foreach (var slot in slots)
             {
-                var follow = slot.Find($"{GuideRootName}/{YawFollowName}");
+                var follow = slot.Find(
+                    $"{GuideRootName}/{RingCenterName}/{YawFollowName}");
                 if (follow == null) continue;
 
                 yawTotal++;
