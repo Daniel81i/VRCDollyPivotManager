@@ -194,6 +194,14 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             var aimTarget = EnsureChild(probeRoot, AimTargetName);
             ConfigureAimTarget(aimTarget.gameObject);
 
+            // ProbeRig の向きの追従先にはアバタールートを使う。
+            // probeRoot（CamDrone Probe）は MA のコンポーネントしか持たず、
+            // 子の ProbeAimTarget も Bone Proxy で Chest へ移る。ビルド後は
+            // 空の GameObject になり、Avatar Optimizer の削除対象になり得る。
+            // 消えると ProbeRig が追従先を失い、三辺測量の座標系が狂う。
+            // Guide 側の YawFollow も同じ理由でルートを使っている。
+            var yawSource = avatar.transform;
+
             // 対象外の固定点に前回のレイが残っていると、消したはずの分まで
             // 数え上げられる。単独スロット版の意味が無くなるので掃除する。
             for (var i = 1; i <= SlotCount; i++)
@@ -217,7 +225,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 rig.localPosition = Vector3.zero;
                 rig.localRotation = Quaternion.identity;
                 rig.localScale = Vector3.one;
-                ConfigureRotationConstraint(rig.gameObject, probeRoot, warnings);
+                ConfigureRotationConstraint(rig.gameObject, yawSource, warnings);
                 ConfigureWorldScale(rig.gameObject);
 
                 foreach (var axis in ProbeAxes)
@@ -244,7 +252,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
 
                 sourceTotal++;
                 var rotation = rig.GetComponent<VRCRotationConstraint>();
-                if (rotation != null && SourceIsSet(rotation, probeRoot)) sourceOk++;
+                if (rotation != null && SourceIsSet(rotation, yawSource)) sourceOk++;
 
                 foreach (var axis in ProbeAxes)
                 {
@@ -447,7 +455,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
 
         /// <summary>
         /// ProbeRig の向きをプレイヤーの向きに合わせる（Y軸のみ）。位置は固定点のまま。
-        /// ソースにはアバタールート直下の probeRoot を使う。probeRoot の
+        /// ソースにはアバタールートを使う。ルートの
         /// ワールド回転はアバタールートの回転そのものなので、別途 BoneProxy は不要。
         /// </summary>
         private static void ConfigureRotationConstraint(GameObject go, Transform yawSource, List<string> warnings)
