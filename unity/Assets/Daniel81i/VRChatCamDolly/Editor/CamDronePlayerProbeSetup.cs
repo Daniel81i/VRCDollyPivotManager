@@ -424,6 +424,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         /// </summary>
         private static void ConfigureRotationConstraint(GameObject go, Transform yawSource, List<string> warnings)
         {
+            const string label = "VRCRotationConstraint";
             var rotation = EnsureComponent<VRCRotationConstraint>(go);
             using (var so = new SerializedObject(rotation))
             {
@@ -433,23 +434,23 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 SetBool(so, false, null, "AffectsRotationX", "AffectRotationX", "m_AffectRotationX");
                 SetBool(so, true, null, "AffectsRotationY", "AffectRotationY", "m_AffectRotationY");
                 SetBool(so, false, null, "AffectsRotationZ", "AffectRotationZ", "m_AffectRotationZ");
-                // At Rest と Offset は保存値。Lock が有効だとこれがそのまま効く。
+                // At Rest と Offset は保存値で、Lock が有効だとそのまま効く。
                 // Sources が空だった頃の値が残っていると、Source を入れ直しても
-                // その分ずれたままになる。インスペクタの Zero を押させずに済むよう
-                // 毎回ゼロにする。名前は版で違い得るので候補を並べる（無ければ無視）。
-                SetVector3(so, Vector3.zero, null, "RotationAtRest", "AtRestRotation", "m_RotationAtRest");
-                SetVector3(so, Vector3.zero, null, "RotationOffset", "OffsetRotation", "m_RotationOffset");
-                SetVector3(so, Vector3.zero, null, "PositionAtRest", "AtRestPosition", "m_PositionAtRest");
-                SetVector3(so, Vector3.zero, null, "PositionOffset", "OffsetPosition", "m_PositionOffset");
+                // その分ずれたままになる。インスペクタの Zero に相当する操作。
+                // 名前は版で違い得るので、1つも書けなければ手で押してもらう。
+                if (!ZeroRestAndOffset(so))
+                    warnings.Add($"{label} のインスペクタで Zero を押してください"
+                                 + "（At Rest / Offset を消せませんでした）。");
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
 
-            SetSingleSource(rotation, yawSource, "VRCRotationConstraint", warnings);
+            SetSingleSource(rotation, yawSource, label, warnings);
             EditorUtility.SetDirty(rotation);
         }
 
         private static void ConfigureAimConstraint(GameObject go, Transform aimTarget, List<string> warnings)
         {
+            const string label = "VRCAimConstraint";
             var aim = EnsureComponent<VRCAimConstraint>(go);
             using (var so = new SerializedObject(aim))
             {
@@ -463,18 +464,17 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 SetBool(so, true, null, "AffectsRotationX", "AffectRotationX", "m_AffectRotationX");
                 SetBool(so, true, null, "AffectsRotationY", "AffectRotationY", "m_AffectRotationY");
                 SetBool(so, true, null, "AffectsRotationZ", "AffectRotationZ", "m_AffectRotationZ");
-                // At Rest と Offset は保存値。Lock が有効だとこれがそのまま効く。
+                // At Rest と Offset は保存値で、Lock が有効だとそのまま効く。
                 // Sources が空だった頃の値が残っていると、Source を入れ直しても
-                // その分ずれたままになる。インスペクタの Zero を押させずに済むよう
-                // 毎回ゼロにする。名前は版で違い得るので候補を並べる（無ければ無視）。
-                SetVector3(so, Vector3.zero, null, "RotationAtRest", "AtRestRotation", "m_RotationAtRest");
-                SetVector3(so, Vector3.zero, null, "RotationOffset", "OffsetRotation", "m_RotationOffset");
-                SetVector3(so, Vector3.zero, null, "PositionAtRest", "AtRestPosition", "m_PositionAtRest");
-                SetVector3(so, Vector3.zero, null, "PositionOffset", "OffsetPosition", "m_PositionOffset");
+                // その分ずれたままになる。インスペクタの Zero に相当する操作。
+                // 名前は版で違い得るので、1つも書けなければ手で押してもらう。
+                if (!ZeroRestAndOffset(so))
+                    warnings.Add($"{label} のインスペクタで Zero を押してください"
+                                 + "（At Rest / Offset を消せませんでした）。");
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
 
-            SetSingleSource(aim, aimTarget, "VRCAimConstraint", warnings);
+            SetSingleSource(aim, aimTarget, label, warnings);
             EditorUtility.SetDirty(aim);
         }
 
@@ -762,6 +762,19 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             }
         }
 
+        /// <summary>
+        /// インスペクタの Zero に相当する。1つでも書けたら true。
+        /// </summary>
+        private static bool ZeroRestAndOffset(SerializedObject so)
+        {
+            var wrote = false;
+            wrote |= SetVector3(so, Vector3.zero, null, "RotationAtRest", "AtRestRotation", "m_RotationAtRest");
+            wrote |= SetVector3(so, Vector3.zero, null, "RotationOffset", "OffsetRotation", "m_RotationOffset");
+            wrote |= SetVector3(so, Vector3.zero, null, "PositionAtRest", "AtRestPosition", "m_PositionAtRest");
+            wrote |= SetVector3(so, Vector3.zero, null, "PositionOffset", "OffsetPosition", "m_PositionOffset");
+            return wrote;
+        }
+
         private static bool TrySetSourceBySerializedProperty(SerializedObject so, Transform source)
         {
             var root = FindProp(so, "Sources", "sources", "m_Sources");
@@ -1035,10 +1048,12 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             return prop;
         }
 
-        private static void SetVector3(SerializedObject so, Vector3 value, List<string> warnings, params string[] names)
+        private static bool SetVector3(SerializedObject so, Vector3 value, List<string> warnings, params string[] names)
         {
             var prop = FindTyped(so, SerializedPropertyType.Vector3, warnings, names);
-            if (prop != null) prop.vector3Value = value;
+            if (prop == null) return false;
+            prop.vector3Value = value;
+            return true;
         }
 
         private static void SetFloat(SerializedObject so, float value, List<string> warnings, params string[] names)

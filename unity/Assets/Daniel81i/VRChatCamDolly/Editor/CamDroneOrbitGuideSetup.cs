@@ -550,10 +550,18 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 SetBoolProperty(so, true, "AffectsRotationY", "AffectRotationY");
                 SetBoolProperty(so, false, "AffectsRotationZ", "AffectRotationZ");
                 // At Rest と Offset は保存値で、Lock が有効だとそのまま効く。
-                // Sources が空だった頃の値が残っているとずれたままになるため、
-                // インスペクタの Zero を押させずに済むよう毎回ゼロにする。
-                SetVector3Property(so, Vector3.zero, "RotationAtRest", "AtRestRotation");
-                SetVector3Property(so, Vector3.zero, "RotationOffset", "OffsetRotation");
+                // Sources が空だった頃の値が残っているとずれたままになる。
+                // インスペクタの Zero に相当する操作。名前は版で違い得るので、
+                // 1つも書けなければ手で押してもらう。
+                var zeroed = SetVector3Property(so, Vector3.zero, "RotationAtRest", "AtRestRotation");
+                zeroed |= SetVector3Property(so, Vector3.zero, "RotationOffset", "OffsetRotation");
+                if (!zeroed)
+                {
+                    var zeroWarning = $"{go.name} のインスペクタで Zero を押してください"
+                                      + "（At Rest / Offset を消せませんでした）。";
+                    notes.Add(zeroWarning);
+                    Debug.LogWarning($"[CamDrone Orbit] {zeroWarning}", go);
+                }
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
 
@@ -655,7 +663,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             }
         }
 
-        private static void SetVector3Property(SerializedObject so, Vector3 value,
+        private static bool SetVector3Property(SerializedObject so, Vector3 value,
             params string[] names)
         {
             foreach (var name in names)
@@ -663,8 +671,10 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 var property = so.FindProperty(name);
                 if (property == null || property.propertyType != SerializedPropertyType.Vector3) continue;
                 property.vector3Value = value;
-                return;
+                return true;
             }
+
+            return false;
         }
 
         private static void SetBoolProperty(SerializedObject so, bool value, params string[] names)
