@@ -434,6 +434,21 @@ class SlotState:
         self.initial: set = set(DEFAULT_MENU_NORMALIZED)
         self.confirm = False
 
+    def reset(self) -> None:
+        """アバターが変わったときに呼ぶ。持っている値を全部捨てる。
+
+        アバター側のパラメータは読み込みで既定値に戻る。こちらが前の値を
+        持ち続けると、ガイドが示す円と生成されるパスが食い違う。測距値も
+        前のアバターで測ったものなので使えない。
+        """
+        for buffer in self.samples.values():
+            buffer.clear()
+        for buffer in self.hits.values():
+            buffer.clear()
+        self.menu = dict(DEFAULT_MENU_NORMALIZED)
+        self.initial = set(DEFAULT_MENU_NORMALIZED)
+        self.confirm = False
+
     def push_distance(self, axis: str, value: float, now: float) -> None:
         self.samples[axis].append((now, value))
 
@@ -1389,8 +1404,20 @@ def build_dispatcher(state: State, config: Config, log: Logger) -> osc_dispatche
             return
 
         if address == "/avatar/change":
-            # アバターのロード時。この直後に VRChat が全パラメータを一度送ってくる
-            log.info("アバターの切り替えを検出しました。現在値が届くはずです")
+            # アバターのロード時。パラメータは既定値に戻っているので、
+            # 持っている値は全部捨てる。この直後に VRChat が全パラメータを
+            # 一度送ってくるが、取りこぼしても既定値のままなら
+            # アバター側の表示と食い違わない。
+            with state.lock:
+                for slot in state.slots.values():
+                    slot.reset()
+                state.eye_height = None
+
+            log.info("アバターの切り替えを検出しました。保持していた値を捨てます")
+
+            # 一斉送信を取りこぼしても埋まるよう、こちらからも取りに行く
+            threading.Thread(target=refresh_from_oscquery,
+                             args=(state, config, log), daemon=True).start()
             return
 
         if not address.startswith(PARAM_ROOT) or not args:
