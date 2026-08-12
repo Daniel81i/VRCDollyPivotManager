@@ -433,6 +433,14 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 SetBool(so, false, null, "AffectsRotationX", "AffectRotationX", "m_AffectRotationX");
                 SetBool(so, true, null, "AffectsRotationY", "AffectRotationY", "m_AffectRotationY");
                 SetBool(so, false, null, "AffectsRotationZ", "AffectRotationZ", "m_AffectRotationZ");
+                // At Rest と Offset は保存値。Lock が有効だとこれがそのまま効く。
+                // Sources が空だった頃の値が残っていると、Source を入れ直しても
+                // その分ずれたままになる。インスペクタの Zero を押させずに済むよう
+                // 毎回ゼロにする。名前は版で違い得るので候補を並べる（無ければ無視）。
+                SetVector3(so, Vector3.zero, null, "RotationAtRest", "AtRestRotation", "m_RotationAtRest");
+                SetVector3(so, Vector3.zero, null, "RotationOffset", "OffsetRotation", "m_RotationOffset");
+                SetVector3(so, Vector3.zero, null, "PositionAtRest", "AtRestPosition", "m_PositionAtRest");
+                SetVector3(so, Vector3.zero, null, "PositionOffset", "OffsetPosition", "m_PositionOffset");
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
 
@@ -455,6 +463,14 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 SetBool(so, true, null, "AffectsRotationX", "AffectRotationX", "m_AffectRotationX");
                 SetBool(so, true, null, "AffectsRotationY", "AffectRotationY", "m_AffectRotationY");
                 SetBool(so, true, null, "AffectsRotationZ", "AffectRotationZ", "m_AffectRotationZ");
+                // At Rest と Offset は保存値。Lock が有効だとこれがそのまま効く。
+                // Sources が空だった頃の値が残っていると、Source を入れ直しても
+                // その分ずれたままになる。インスペクタの Zero を押させずに済むよう
+                // 毎回ゼロにする。名前は版で違い得るので候補を並べる（無ければ無視）。
+                SetVector3(so, Vector3.zero, null, "RotationAtRest", "AtRestRotation", "m_RotationAtRest");
+                SetVector3(so, Vector3.zero, null, "RotationOffset", "OffsetRotation", "m_RotationOffset");
+                SetVector3(so, Vector3.zero, null, "PositionAtRest", "AtRestPosition", "m_PositionAtRest");
+                SetVector3(so, Vector3.zero, null, "PositionOffset", "OffsetPosition", "m_PositionOffset");
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
 

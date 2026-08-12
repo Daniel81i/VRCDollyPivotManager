@@ -549,6 +549,11 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 SetBoolProperty(so, false, "AffectsRotationX", "AffectRotationX");
                 SetBoolProperty(so, true, "AffectsRotationY", "AffectRotationY");
                 SetBoolProperty(so, false, "AffectsRotationZ", "AffectRotationZ");
+                // At Rest と Offset は保存値で、Lock が有効だとそのまま効く。
+                // Sources が空だった頃の値が残っているとずれたままになるため、
+                // インスペクタの Zero を押させずに済むよう毎回ゼロにする。
+                SetVector3Property(so, Vector3.zero, "RotationAtRest", "AtRestRotation");
+                SetVector3Property(so, Vector3.zero, "RotationOffset", "OffsetRotation");
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
 
@@ -647,6 +652,18 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
 
                 so.ApplyModifiedPropertiesWithoutUndo();
                 return true;
+            }
+        }
+
+        private static void SetVector3Property(SerializedObject so, Vector3 value,
+            params string[] names)
+        {
+            foreach (var name in names)
+            {
+                var property = so.FindProperty(name);
+                if (property == null || property.propertyType != SerializedPropertyType.Vector3) continue;
+                property.vector3Value = value;
+                return;
             }
         }
 
