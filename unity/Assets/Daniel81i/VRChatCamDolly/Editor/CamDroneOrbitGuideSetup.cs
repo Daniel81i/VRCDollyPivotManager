@@ -552,13 +552,102 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
 
-            if (!TrySetSourceByReflection(constraint, yawSource))
+            // 「設定した」ではなく「入っているか」で判断する。Sources は
+            // 構造体ベースのリストで、リフレクションで取るとコピーが返る。
+            // 書き換えても本体に反映されないまま成功を返すため、以前は
+            // 空のまま素通りしていた。
+            TrySetSourceByReflection(constraint, yawSource);
+
+            if (!SourceIsSet(constraint, yawSource))
+                TrySetSourceBySerializedProperty(constraint, yawSource);
+
+            if (!SourceIsSet(constraint, yawSource))
             {
-                notes.Add($"{go.name} の VRC Rotation Constraint の Sources に " +
-                          $"'{yawSource.name}' を手で設定してください。");
+                var warning = $"{go.name} の VRC Rotation Constraint の Sources に " +
+                              $"'{yawSource.name}' を手で設定してください。";
+                notes.Add(warning);
+                Debug.LogWarning($"[CamDrone Orbit] {warning}", go);
             }
 
             EditorUtility.SetDirty(constraint);
+        }
+
+        /// <summary>
+        /// Sources の先頭要素。createIfEmpty なら空のとき1つ確保する。
+        ///
+        /// Sources は VRCConstraintSourceKeyableList で、直接の配列ではなく
+        /// 中に配列を1つ抱えた構造体。名前が版で変わり得るので、型で探す。
+        /// </summary>
+        private static SerializedProperty FindSourceSlot(SerializedObject so, bool createIfEmpty)
+        {
+            var root = so.FindProperty("Sources") ?? so.FindProperty("sources")
+                       ?? so.FindProperty("m_Sources");
+            if (root == null) return null;
+
+            var array = root.isArray ? root.Copy() : null;
+            if (array == null)
+            {
+                var iterator = root.Copy();
+                var end = root.GetEndProperty();
+                while (iterator.NextVisible(true)
+                       && !SerializedProperty.EqualContents(iterator, end))
+                {
+                    if (iterator.isArray && iterator.propertyType != SerializedPropertyType.String)
+                    {
+                        array = iterator.Copy();
+                        break;
+                    }
+                }
+            }
+
+            if (array == null) return null;
+            if (array.arraySize < 1)
+            {
+                if (!createIfEmpty) return null;
+                array.arraySize = 1;
+            }
+
+            return array.GetArrayElementAtIndex(0);
+        }
+
+        private static SerializedProperty FindSourceTransform(SerializedProperty slot)
+        {
+            return slot.FindPropertyRelative("SourceTransform")
+                   ?? slot.FindPropertyRelative("sourceTransform")
+                   ?? slot.FindPropertyRelative("transform");
+        }
+
+        /// <summary>Sources の先頭に狙いの Transform が実際に入っているか。</summary>
+        private static bool SourceIsSet(Component constraint, Transform source)
+        {
+            using (var so = new SerializedObject(constraint))
+            {
+                var slot = FindSourceSlot(so, false);
+                if (slot == null) return false;
+                var transform = FindSourceTransform(slot);
+                return transform != null && transform.objectReferenceValue == source;
+            }
+        }
+
+        private static bool TrySetSourceBySerializedProperty(Component constraint, Transform source)
+        {
+            using (var so = new SerializedObject(constraint))
+            {
+                var slot = FindSourceSlot(so, true);
+                if (slot == null) return false;
+
+                var transform = FindSourceTransform(slot);
+                if (transform == null) return false;
+                transform.objectReferenceValue = source;
+
+                var weight = slot.FindPropertyRelative("Weight")
+                             ?? slot.FindPropertyRelative("weight");
+                if (weight != null && weight.propertyType == SerializedPropertyType.Float)
+                    weight.floatValue = 1f;
+
+                so.ApplyModifiedPropertiesWithoutUndo();
+                return true;
+            }
         }
 
         private static void SetBoolProperty(SerializedObject so, bool value, params string[] names)
