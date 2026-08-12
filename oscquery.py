@@ -53,13 +53,14 @@ def free_port() -> int:
 
 
 def local_ip() -> str:
-    """mDNS で広告する自分の IP。取得できなければループバック。"""
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.connect(("8.8.8.8", 80))
-            return sock.getsockname()[0]
-    except Exception:
-        return "127.0.0.1"
+    """mDNS で広告するアドレス。常にループバック。
+
+    VRChat は仕様として localhost からの通信しか受け付けない。LAN の IP を
+    広告すると、見つけてもらえても VRChat 側から送ってこない。以前は
+    外向きのソケットから LAN の IP を取って広告していたため、OSCQuery 経由の
+    受信が成立していなかった。VRChat 公式のライブラリも既定は localhost。
+    """
+    return "127.0.0.1"
 
 
 # ---------------------------------------------------------------------------
