@@ -743,6 +743,16 @@ def collect_inputs(slot: SlotState, now: float, config: Config, log: Logger,
                 stale_age = now - stamp
                 hit = slot.latest_hit(axis)
 
+        # 当たっていないレイの距離に意味は無い。VRChat は外れたとき 0 を
+        # 入れてくるので、そのまま三辺測量に渡すと基線から決まる定数
+        # （プレイヤーの足元付近）が中心として出てしまい、いかにも
+        # 計算できたように見えるパスが生成される。
+        if hit is False:
+            distances[axis] = None
+            inputs.report.append(
+                f"  Probe{axis}      レイが当たっていません（距離は無効）")
+            continue
+
         if distances[axis] is None:
             inputs.report.append(f"  Probe{axis}      未受信")
             continue
@@ -1216,10 +1226,10 @@ def generate(slot_number: int, state: State, config: Config, log: Logger,
     # 中心が求まらないまま進むと、自分の足元を中心にした無意味なパスを
     # VRChat へ読み込ませてしまう。ここで止める。
     if inputs.center_missing:
-        log.warn(f"測距値({','.join(inputs.center_missing)})が届いていないため中止しました。"
+        log.warn(f"測距値({','.join(inputs.center_missing)})が使えないため中止しました。"
                  "生成も読み込みもしていません")
-        log.warn("  レイが固定点に当たっているか、アバターを読み込み直して"
-                 "現在値が届くかを確認してください")
+        log.warn("  上の[受信状況]を見てください。"
+                 "「当たっていません」ならレイの設定、「未受信」なら受信経路の問題です")
         log.info("=" * 24 + " 中止 " + "=" * 24)
         return None
 
