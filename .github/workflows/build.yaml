@@ -61,13 +61,16 @@ jobs:
           --collect-all zeroconf
           ${{ env.APP_NAME }}.py
 
-      - name: Build unitypackage
-        # .unitypackage は gzip した tar で、構造さえ守れば Unity 無しで組める。
-        # .meta の欠落や GUID の読めない meta があればここで落ちる。
-        run: python tools/build_unitypackage.py package/${{ env.APP_NAME }}.unitypackage
-
       - name: Stage release files
+        # unitypackage はここでは作らない。Unity が無いと正しい形にできず、
+        # 自前で組んだものは Unity が読めなかった。リポジトリルートに
+        # 置かれた Unity 書き出しのものを、そのまま配る。
         run: |
+          if (-not (Test-Path "${{ env.APP_NAME }}.unitypackage")) {
+            Write-Error "リポジトリルートに ${{ env.APP_NAME }}.unitypackage がありません。Unity から書き出してコミットしてください"
+            exit 1
+          }
+          Copy-Item ${{ env.APP_NAME }}.unitypackage package/
           Copy-Item dist/${{ env.APP_NAME }}.exe package/
           Copy-Item config.json package/
           Copy-Item README.md package/
