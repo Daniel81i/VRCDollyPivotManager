@@ -1371,7 +1371,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                 FloatParameter(RadiusParam(slot), Normalize(RadiusDefault, RadiusMin, RadiusMax)),
                 FloatParameter(TiltParam(slot), Normalize(TiltDefaultDeg, TiltMinDeg, TiltMaxDeg)),
                 FloatParameter(TiltDirParam(slot), Normalize(TiltDirDefaultDeg, TiltDirMinDeg, TiltDirMaxDeg)),
-                BoolParameter(GuideParam(slot), true),
+                BoolParameter(GuideParam(slot), false),
                 BoolParameter(SyncParam(slot), false),
                 // 以下はアニメーションには使わず、OSC へ出すためだけに存在する
                 IntParameter(PointsParam(slot), PointsDefault),
@@ -1394,6 +1394,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
             AddBlendLayer(controller, "Tilt", TiltParam(slot), clips.TiltMin, clips.TiltMax);
             AddBlendLayer(controller, "TiltDir", TiltDirParam(slot), clips.TiltDirMin, clips.TiltDirMax);
             AddGuideLayer(controller, slot, clips);
+            AddGuideAutoShowLayer(controller, slot);
             AddSyncLayer(controller, slot);
 
             EditorUtility.SetDirty(controller);
@@ -1453,6 +1454,110 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
         /// IsLocal と Guide の AND で表示を切り替える。
         /// MA の ObjectToggle は単一パラメータしか見られないのでここだけ手書きする。
         /// </summary>
+        /// <summary>
+        /// 設定値が初期値から動いたらガイドを出す。
+        ///
+        /// 既定は OFF。ワールド移動などでアバターが読み込み直されると設定は
+        /// 初期値へ戻るので、そのときガイドも消えるのが正しい。何も指定して
+        /// いないのに前の円が出ている状態を避ける。
+        ///
+        /// 一度出したあとは Armed に留まり、繰り返し ON にはしない。手で
+        /// 消したものが戻らないようにするため。全部が初期値へ戻れば
+        /// また待機状態に入る。
+        /// </summary>
+        private static void AddGuideAutoShowLayer(AnimatorController controller, int slot)
+        {
+            var layer = NewLayer(controller, "GuideAutoShow");
+            var machine = layer.stateMachine;
+
+            var idle = machine.AddState("Idle");
+            idle.writeDefaultValues = true;
+            machine.defaultState = idle;
+
+            var show = machine.AddState("Show");
+            show.writeDefaultValues = true;
+
+            var armed = machine.AddState("Armed");
+            armed.writeDefaultValues = true;
+
+            var driver = show.AddStateMachineBehaviour<VRCAvatarParameterDriver>();
+            driver.localOnly = true;
+            driver.parameters = new List<VRC.SDKBase.VRC_AvatarParameterDriver.Parameter>
+            {
+                new VRC.SDKBase.VRC_AvatarParameterDriver.Parameter
+                {
+                    type = VRC.SDKBase.VRC_AvatarParameterDriver.ChangeType.Set,
+                    name = GuideParam(slot),
+                    value = 1f,
+                },
+            };
+
+            var toArmed = show.AddTransition(armed);
+            toArmed.hasExitTime = false;
+            toArmed.duration = 0f;
+
+            // パペットは粗いので、1% 離れていれば操作されたとみなす
+            const float margin = 0.01f;
+
+            var floats = new (string Param, float Default)[]
+            {
+                (HeightParam(slot), Normalize(HeightDefault, HeightMin, HeightMax)),
+                (RingHeightParam(slot), Normalize(HeightDefault, HeightMin, HeightMax)),
+                (RadiusParam(slot), Normalize(RadiusDefault, RadiusMin, RadiusMax)),
+                (TiltParam(slot), Normalize(TiltDefaultDeg, TiltMinDeg, TiltMaxDeg)),
+                (TiltDirParam(slot), Normalize(TiltDirDefaultDeg, TiltDirMinDeg, TiltDirMaxDeg)),
+            };
+
+            // どれか1つでも動いていれば出す
+            foreach (var item in floats)
+            {
+                var above = idle.AddTransition(show);
+                above.hasExitTime = false;
+                above.duration = 0f;
+                above.AddCondition(AnimatorConditionMode.Greater, item.Default + margin, item.Param);
+
+                var below = idle.AddTransition(show);
+                below.hasExitTime = false;
+                below.duration = 0f;
+                below.AddCondition(AnimatorConditionMode.Less, item.Default - margin, item.Param);
+            }
+
+            var points = idle.AddTransition(show);
+            points.hasExitTime = false;
+            points.duration = 0f;
+            points.AddCondition(AnimatorConditionMode.NotEqual, PointsDefault, PointsParam(slot));
+
+            var random = idle.AddTransition(show);
+            random.hasExitTime = false;
+            random.duration = 0f;
+            random.AddCondition(AnimatorConditionMode.NotEqual, RandomDefault, RandomParam(slot));
+
+            var clockwise = idle.AddTransition(show);
+            clockwise.hasExitTime = false;
+            clockwise.duration = 0f;
+            clockwise.AddCondition(
+                ClockwiseDefault ? AnimatorConditionMode.IfNot : AnimatorConditionMode.If,
+                0f, ClockwiseParam(slot));
+
+            // 全部が初期値に戻ったら待機へ。以降また出せるようになる
+            var back = armed.AddTransition(idle);
+            back.hasExitTime = false;
+            back.duration = 0f;
+            foreach (var item in floats)
+            {
+                back.AddCondition(AnimatorConditionMode.Less, item.Default + margin, item.Param);
+                back.AddCondition(AnimatorConditionMode.Greater, item.Default - margin, item.Param);
+            }
+
+            back.AddCondition(AnimatorConditionMode.Equals, PointsDefault, PointsParam(slot));
+            back.AddCondition(AnimatorConditionMode.Equals, RandomDefault, RandomParam(slot));
+            back.AddCondition(
+                ClockwiseDefault ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot,
+                0f, ClockwiseParam(slot));
+
+            controller.AddLayer(layer);
+        }
+
         private static void AddGuideLayer(AnimatorController controller, int slot, GuideClips clips)
         {
             var layer = NewLayer(controller, "Guide");
@@ -1820,7 +1925,7 @@ namespace Daniel81i.VRChatCamDolly.EditorTools
                     Normalize(TiltDirDefaultDeg, TiltDirMinDeg, TiltDirMaxDeg)),
                 // 既定 1（表示）で問題ない。他人に見えないことは Guide レイヤーの
                 // IsLocal 条件が保証しており、既定値には依存しない。
-                Param(GuideParam(slot), ParameterSyncType.Bool, 1f),
+                Param(GuideParam(slot), ParameterSyncType.Bool, 0f),
                 Param(PointsParam(slot), ParameterSyncType.Int, PointsDefault),
                 Param(RandomParam(slot), ParameterSyncType.Int, RandomDefault),
                 Param(ClockwiseParam(slot), ParameterSyncType.Bool, ClockwiseDefault ? 1f : 0f),
