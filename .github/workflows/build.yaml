@@ -66,6 +66,10 @@ jobs:
         # 自前で組んだものは Unity が読めなかった。リポジトリルートに
         # 置かれた Unity 書き出しのものを、そのまま配る。
         run: |
+          # 置き場所を作る。以前は unitypackage を組み立てるステップが
+          # ついでに作っていたが、そのステップを消したので明示的に作る。
+          New-Item -ItemType Directory -Force package | Out-Null
+
           if (-not (Test-Path "${{ env.APP_NAME }}.unitypackage")) {
             Write-Error "リポジトリルートに ${{ env.APP_NAME }}.unitypackage がありません。Unity から書き出してコミットしてください"
             exit 1
